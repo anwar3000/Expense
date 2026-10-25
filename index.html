@@ -16,6 +16,11 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
+<div id="boot" style="padding:40px 20px;text-align:center;font-family:sans-serif;color:#555">Loading LLCT Expense…<div id="boot-err" style="color:#b91c1c;margin-top:16px;font-size:14px;white-space:pre-wrap"></div></div>
+<script>
+  window.addEventListener("error", function (e) { var b = document.getElementById("boot-err"); if (b) { document.getElementById("boot").style.display = "block"; b.textContent += "Error: " + (e.message || e.target && e.target.src || "load failed") + "\n"; } }, true);
+  window.addEventListener("unhandledrejection", function (e) { var b = document.getElementById("boot-err"); if (b) { document.getElementById("boot").style.display = "block"; b.textContent += "Error: " + (e.reason && (e.reason.code || e.reason.message) || e.reason) + "\n"; } });
+</script>
 
 <!-- Setup / not configured -->
 <section id="screen-setup" class="screen center hidden">

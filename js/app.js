@@ -81,6 +81,7 @@ const isAdmin = () => S.profile?.role === "admin";
 const clear = arr => { arr.forEach(u => { try { u(); } catch {} }); arr.length = 0; };
 
 function show(screen) {
+  document.getElementById("boot").style.display = "none";
   ["setup", "login", "blocked", "app"].forEach(s => $(`#screen-${s}`).classList.toggle("hidden", s !== screen));
 }
 function blocked(title, text) {

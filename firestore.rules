@@ -1,0 +1,38 @@
+rules_version = '2';
+// LLCT Expense — every user's data lives under /users/{uid}/... and is visible only to
+// that user and to admins. Publish in Firebase console → Firestore Database → Rules.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    // Bootstrap admin. Keep in sync with SUPER_ADMIN_EMAIL in js/config.js
+    function isSuper() { return signedIn() && request.auth.token.email == 'anwar@llct.net'; }
+    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function hasProfile() { return exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function isAdmin() {
+      return isSuper() || (signedIn() && hasProfile() && profile().role == 'admin' && profile().active == true);
+    }
+    function isActiveOwner(uid) {
+      return signedIn() && request.auth.uid == uid && hasProfile() && profile().active == true;
+    }
+
+    match /users/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow create: if isAdmin();
+      allow delete: if isAdmin();
+      // Users may change only their own name and opening balance — never role or status.
+      allow update: if isAdmin() || (isActiveOwner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'openingBalance']));
+
+      // heads, entries, receipts
+      match /{sub}/{docId} {
+        allow read, write: if isAdmin() || isActiveOwner(uid);
+      }
+    }
+
+    // Admin dashboard reads every user's entries in one query.
+    match /{path=**}/entries/{entryId} {
+      allow read: if isAdmin();
+    }
+  }
+}

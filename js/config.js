@@ -2,12 +2,12 @@
 // Firebase console → Project settings → General → Your apps → Web app (</>) → SDK setup and configuration → Config.
 // Paste the values below, commit, and the app connects.
 export const firebaseConfig = {
-  apiKey: "PASTE_API_KEY",
-  authDomain: "PASTE_PROJECT_ID.firebaseapp.com",
-  projectId: "PASTE_PROJECT_ID",
-  storageBucket: "PASTE_PROJECT_ID.appspot.com",
-  messagingSenderId: "PASTE_SENDER_ID",
-  appId: "PASTE_APP_ID"
+  apiKey: "AIzaSyDW1mQMw0LOxMf-HSBgxXEXvu-Wfl9MKjE",
+  authDomain: "expense-4a374.firebaseapp.com",
+  projectId: "expense-4a374",
+  storageBucket: "expense-4a374.firebasestorage.app",
+  messagingSenderId: "90055874709",
+  appId: "1:90055874709:web:9ac9613982b9b4756da39c"
 };
 
 // This email becomes the first admin automatically on first sign-in.

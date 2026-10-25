@@ -1,13 +1,14 @@
-import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
   createUserWithEmailAndPassword, sendPasswordResetEmail
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
   collection, collectionGroup, query, where, orderBy, onSnapshot, writeBatch, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { firebaseConfig, SUPER_ADMIN_EMAIL, CURRENCY, WEEK_START } from "./config.js";
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js";
+import { firebaseConfig, SUPER_ADMIN_EMAIL, CURRENCY, WEEK_START, RECAPTCHA_KEY, AI_MODELS } from "./config.js";
 
 /* ---------------- helpers ---------------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -56,6 +57,9 @@ const configured = !String(firebaseConfig.apiKey).startsWith("PASTE");
 let app, auth, db;
 if (configured) {
   app = initializeApp(firebaseConfig);
+  // App Check proves requests come from this website (required for the bill-reading AI).
+  try { initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_KEY), isTokenAutoRefreshEnabled: true }); }
+  catch (err) { console.warn("App Check", err); }
   auth = getAuth(app);
   db = getFirestore(app);
 }
@@ -289,6 +293,8 @@ $$("#entry-type button").forEach(b => b.addEventListener("click", () => setEntry
 
 async function openEntry(entry) {
   S.editing = entry || null; S.newReceipts = []; S.oldReceipts = []; S.removedReceipts = [];
+  S.touched = new Set(entry ? ["e-amount", "e-date", "e-head", "e-mode", "type", ...(entry.note ? ["e-note"] : []), ...(entry.ref ? ["e-ref"] : [])] : []);
+  setAiStatus("");
   $("#entry-title").textContent = entry ? "Edit entry" : "Add entry";
   $("#e-delete").classList.toggle("hidden", !entry);
   setEntryType(entry?.type || S.entryType || "expense", entry);
@@ -299,6 +305,7 @@ async function openEntry(entry) {
   $("#e-ref").value = entry?.ref || "";
   $("#e-meta").textContent = entry ? metaLine(entry) : "";
   renderThumbs();
+  $$(".ai-filled").forEach(el => el.classList.remove("ai-filled"));
   $("#entry-modal").classList.remove("hidden");
   if (!entry) setTimeout(() => $("#e-amount").focus(), 50);
   if (entry?.receiptCount) {
@@ -362,6 +369,8 @@ function dataUrlToBlob(d) {
     catch (err) { toast(`${f.name}: ${err.message}`, 4000); }
   }
   busy(false); renderThumbs();
+  const img = S.newReceipts[S.newReceipts.length - 1];
+  if (img && files.length) readBill(img);
 }));
 
 const readDataUrl = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
@@ -724,6 +733,99 @@ $("#dl-pdf").addEventListener("click", () => {
   pdf.save(fileBase(d) + ".pdf");
 });
 
+
+/* ---------------- bill reading (Gemini via Firebase AI Logic) ---------------- */
+["e-amount", "e-date", "e-head", "e-mode", "e-note", "e-ref"].forEach(id =>
+  ["input", "change"].forEach(ev => $("#" + id).addEventListener(ev, e => { if (e.isTrusted) S.touched?.add(id); })));
+$$("#entry-type button").forEach(b => b.addEventListener("click", () => S.touched?.add("type")));
+
+function setAiStatus(html, cls = "") {
+  const el = $("#ai-status"); el.className = "ai-status " + cls; el.innerHTML = html;
+  el.classList.toggle("hidden", !html);
+}
+
+let aiModule = null;
+async function getModel(name) {
+  if (!aiModule) aiModule = await import("https://www.gstatic.com/firebasejs/12.19.0/firebase-ai.js");
+  const { getAI, getGenerativeModel, GoogleAIBackend, Schema } = aiModule;
+  const ai = getAI(app, { backend: new GoogleAIBackend() });
+  const schema = Schema.object({
+    properties: {
+      isBill: Schema.boolean(),
+      amount: Schema.number(),
+      date: Schema.string(),
+      vendor: Schema.string(),
+      billNo: Schema.string(),
+      description: Schema.string(),
+      vat: Schema.number(),
+      paymentMode: Schema.enumString({ enum: ["Cash", "Bank transfer", "Card", "Cheque", "Other"] }),
+      type: Schema.enumString({ enum: ["expense", "income"] }),
+      head: Schema.string()
+    },
+    optionalProperties: ["amount", "date", "vendor", "billNo", "description", "vat", "paymentMode", "type", "head"]
+  });
+  return getGenerativeModel(ai, { model: name, generationConfig: { responseMimeType: "application/json", responseSchema: schema, temperature: 0 } });
+}
+
+async function readBill(rec) {
+  const want = ["e-amount", "e-date", "e-head", "e-mode", "e-note", "e-ref"].filter(id => !S.touched.has(id));
+  if (!want.length) return;
+  const heads = S.heads.map(h => `${h.type}: ${h.name}`).join("\n");
+  const prompt = `You read UAE bills, receipts and invoices (English or Arabic) for an expense app. Today is ${todayStr()}.
+Extract:
+- amount: the FINAL total actually paid, including VAT (not the subtotal, not VAT alone), as a number.
+- date: bill date as YYYY-MM-DD (UAE bills use day/month order).
+- vendor: shop or company name, short.
+- billNo: invoice / receipt / bill number if printed.
+- description: 3-8 words on what was bought, e.g. "Diesel 40L" or "Lunch for site team".
+- vat: VAT amount if shown.
+- paymentMode: Card if card/visa/mastercard payment shown, Cash if cash, else omit.
+- type: "expense" for purchases; "income" only if it is clearly money received (e.g. a cash receipt voucher given to us).
+- head: pick the single best matching name from this list (same type), exactly as written:
+${heads}
+Set isBill=false and omit other fields if the image is not a bill or receipt.`;
+  const part = { inlineData: { mimeType: rec.mime, data: rec.data.split(",")[1] } };
+  const editingAt = S.editing, openedFor = $("#entry-modal");
+  setAiStatus(`<span class="dot-spin"></span> Reading bill…`);
+  let out = null, lastErr = null;
+  for (const name of AI_MODELS) {
+    try {
+      const model = await getModel(name);
+      const res = await model.generateContent([prompt, part]);
+      out = JSON.parse(res.response.text());
+      break;
+    } catch (err) { lastErr = err; console.warn("AI", name, err); if (!/not found|404|unsupported|model/i.test(String(err))) break; }
+  }
+  if (openedFor.classList.contains("hidden") || S.editing !== editingAt) return; // form closed meanwhile
+  if (!out) {
+    const msg = String(lastErr?.message || lastErr || "");
+    setAiStatus(/app.?check|recaptcha|attest/i.test(msg) ? "Couldn't read the bill (security check failed). Fill in manually."
+      : /quota|429|exhaust/i.test(msg) ? "Bill reading is busy right now. Fill in manually or try again later."
+      : "Couldn't read the bill. Fill in manually.", "warn");
+    return;
+  }
+  if (out.isBill === false) { setAiStatus("This doesn't look like a bill — nothing filled.", "warn"); return; }
+  const filled = [];
+  const fill = (id, val, label) => {
+    if (val === undefined || val === null || val === "" || S.touched.has(id)) return;
+    const el = $("#" + id);
+    if (el.tagName === "SELECT" && ![...el.options].some(o => o.value === val)) return;
+    el.value = val; el.classList.add("ai-filled"); filled.push(label);
+  };
+  if (out.type && !S.touched.has("type") && out.type !== S.entryType) setEntryType(out.type);
+  if (out.amount > 0) fill("e-amount", Math.round(out.amount * 100) / 100, "amount");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(out.date || "") && out.date <= todayStr()) fill("e-date", out.date, "date");
+  if (out.head) {
+    const h = S.heads.find(x => x.type === S.entryType && x.name.toLowerCase() === out.head.toLowerCase().replace(/^(income|expense):\s*/, ""));
+    if (h) fill("e-head", h.id, "head");
+  }
+  fill("e-mode", out.paymentMode, "payment mode");
+  const desc = [out.vendor, out.description].filter(Boolean).join(" – ") + (out.vat ? ` (VAT ${money(out.vat)})` : "");
+  fill("e-note", desc, "description");
+  fill("e-ref", out.billNo, "bill no");
+  setAiStatus(filled.length ? `✓ Filled from bill: ${filled.join(", ")}. Please check before saving.` : "Bill read — your entries were kept.", "ok");
+}
+
 /* ---------------- keyboard-aware sheet ---------------- */
 // Keep modals sized to the visible area so the form and Save button stay above the phone keyboard.
 function fitViewport() {
@@ -738,7 +840,7 @@ if (window.visualViewport) {
 }
 document.addEventListener("focusin", e => {
   if (!e.target.closest(".modal") || !e.target.matches("input,select,textarea")) return;
-  setTimeout(() => { fitViewport(); e.target.scrollIntoView({ block: "center", behavior: "smooth" }); }, 300);
+  setTimeout(() => { fitViewport(); e.target.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" }); }, 300);
 });
 
 /* ---------------- PWA ---------------- */

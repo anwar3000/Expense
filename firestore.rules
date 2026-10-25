@@ -30,6 +30,13 @@ service cloud.firestore {
       }
     }
 
+    // Username → login email lookup (needed before sign-in). One name at a time; no listing.
+    match /usernames/{name} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if isAdmin();
+    }
+
     // Admin dashboard reads every user's entries in one query.
     match /{path=**}/entries/{entryId} {
       allow read: if isAdmin();

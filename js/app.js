@@ -1,7 +1,7 @@
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
-  createUserWithEmailAndPassword, sendPasswordResetEmail
+  createUserWithEmailAndPassword, sendPasswordResetEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
@@ -129,6 +129,7 @@ else onAuthStateChanged(auth, async u => {
     $("#me-name").textContent = p.name || u.email;
     $$(".admin-only").forEach(el => el.classList.toggle("hidden", !isAdmin()));
     show("app");
+    $('.tabs button[data-tab="home"]').click();
     if (isAdmin()) startAdmin();
     switchAccount(u.uid);
   } catch (err) {
@@ -137,25 +138,59 @@ else onAuthStateChanged(auth, async u => {
   } finally { busy(false); }
 });
 
+/* ---------------- usernames ---------------- */
+// Users without an email sign in with a username; Firebase gets a private placeholder address.
+const LOGIN_DOMAIN = "users." + firebaseConfig.authDomain;
+const isPlaceholder = email => String(email || "").endsWith("@" + LOGIN_DOMAIN);
+const cleanUsername = v => String(v || "").trim().toLowerCase();
+const validUsername = v => /^[a-z0-9][a-z0-9._-]{2,23}$/.test(v);
+async function emailForLogin(input) {
+  const v = cleanUsername(input);
+  if (v.includes("@")) return v;
+  const snap = await getDoc(doc(db, "usernames", v));
+  if (!snap.exists()) { const e = new Error("No user with that username."); e.code = "auth/user-not-found"; throw e; }
+  return snap.data().email;
+}
+// Show a person's name instead of their login email
+function personName(email) {
+  if (!email) return "";
+  const u = S.users.find(x => x.email === email) || (S.profile?.email === email ? S.profile : null) || (S.viewProfile?.email === email ? S.viewProfile : null);
+  return u?.name || u?.username || String(email).split("@")[0];
+}
+
 $("#login-form").addEventListener("submit", async e => {
   e.preventDefault();
   const m = $("#login-msg"); m.className = "msg"; m.textContent = "Signing in…";
-  try { await signInWithEmailAndPassword(auth, $("#login-email").value.trim(), $("#login-pass").value); m.textContent = ""; }
+  try { await signInWithEmailAndPassword(auth, await emailForLogin($("#login-email").value), $("#login-pass").value); m.textContent = ""; }
   catch (err) { m.className = "msg err"; m.textContent = friendly(err); }
 });
 $("#forgot-btn").addEventListener("click", async () => {
-  const email = $("#login-email").value.trim(), m = $("#login-msg");
-  if (!email) { m.className = "msg err"; m.textContent = "Type your email first."; return; }
-  try { await sendPasswordResetEmail(auth, email); m.className = "msg ok"; m.textContent = "Reset link sent to " + email; }
+  const m = $("#login-msg");
+  if (!$("#login-email").value.trim()) { m.className = "msg err"; m.textContent = "Type your username or email first."; return; }
+  try {
+    const email = await emailForLogin($("#login-email").value);
+    if (isPlaceholder(email)) { m.className = "msg err"; m.textContent = "This username has no email. Ask your admin to set a new password for you."; return; }
+    await sendPasswordResetEmail(auth, email); m.className = "msg ok"; m.textContent = "Reset link sent to " + email;
+  }
   catch (err) { m.className = "msg err"; m.textContent = friendly(err); }
 });
 $("#logout-btn").addEventListener("click", () => signOut(auth));
+$("#pw-btn").addEventListener("click", async () => {
+  const cur = prompt("Current password"); if (!cur) return;
+  const nw = prompt("New password (at least 6 characters)"); if (!nw) return;
+  if (nw.length < 6) { toast("Password must be at least 6 characters"); return; }
+  try {
+    await reauthenticateWithCredential(auth.currentUser, EmailAuthProvider.credential(auth.currentUser.email, cur));
+    await updatePassword(auth.currentUser, nw); toast("Password changed");
+  } catch (err) { toast(friendly(err), 4000); }
+});
 $("#blocked-logout").addEventListener("click", () => signOut(auth));
 
 function friendly(err) {
   const c = err.code || "";
-  if (c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found")) return "Wrong email or password.";
-  if (c.includes("email-already-in-use")) return "That email already has a login.";
+  if (c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found")) return "Wrong username or password.";
+  if (c.includes("email-already-in-use")) return "That username or email already has a login.";
+  if (c.includes("requires-recent-login")) return "Please sign out and sign in again, then retry.";
   if (c.includes("weak-password")) return "Password must be at least 6 characters.";
   if (c.includes("too-many-requests")) return "Too many attempts. Try again in a few minutes.";
   if (c.includes("permission-denied")) return "Permission denied — check the Firestore rules are published.";
@@ -487,8 +522,8 @@ function captureLocation() {
 
 function metaLine(e) {
   const f = ts => ts?.toDate ? ts.toDate().toLocaleString("en-GB") : "";
-  let s = `Added ${f(e.createdAt)}${e.createdBy ? " by " + e.createdBy : ""}`;
-  if (e.updatedAt && e.editCount) s += ` · Edited ${e.editCount}× · last ${f(e.updatedAt)}${e.updatedBy ? " by " + e.updatedBy : ""}`;
+  let s = `Added ${f(e.createdAt)}${e.createdBy ? " by " + personName(e.createdBy) : ""}`;
+  if (e.updatedAt && e.editCount) s += ` · Edited ${e.editCount}× · last ${f(e.updatedAt)}${e.updatedBy ? " by " + personName(e.updatedBy) : ""}`;
   return s;
 }
 
@@ -685,7 +720,7 @@ $("#u-cur").value = DEFAULT_CURRENCY; $("#book-cur").value = DEFAULT_CURRENCY;
 /* ---------------- admin: users ---------------- */
 function startAdmin() {
   S.adminSubs.push(onSnapshot(query(collection(db, "users"), orderBy("name")), s => {
-    S.users = s.docs.map(d => ({ id: d.id, ...d.data() }));
+    S.users = s.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => !u.archived);
     renderUsers(); fillReportScope();
     Promise.all(S.users.map(async u => {
       if (u.id === S.viewUid && S.books.length) return;
@@ -715,7 +750,7 @@ function renderUsers() {
     const bal = bks.reduce((t, b) => t + (+b.openingBalance || 0), 0) + a.net;
     tIn += m.inc; tOut += m.exp; tBal += bal;
     const balHtml = bks.map(b => { const v = bookBal(b, E); return `<div class="${v < 0 ? "exp" : ""}">${bks.length > 1 ? `<span class="muted small">${esc(b.name)}</span> ` : ""}<b>${sym(b.currency)} ${money(v, b.currency)}</b></div>`; }).join("");
-    return `<tr data-id="${u.id}"><td><b>${esc(u.name)}</b><br><span class="muted small">${esc(u.email)}</span></td>
+    return `<tr data-id="${u.id}"><td><b>${esc(u.name)}</b><br><span class="muted small">${u.username ? "@" + esc(u.username) : esc(u.email)}</span></td>
       <td>${u.role === "admin" ? "Admin" : "User"}</td>
       <td class="num inc">${money(m.inc, curOf(u.id))}</td><td class="num exp">${money(m.exp, curOf(u.id))}</td>
       <td class="num">${balHtml}</td>
@@ -742,8 +777,12 @@ $("#users-table").addEventListener("click", e => {
 $("#user-form").addEventListener("submit", async e => {
   e.preventDefault();
   const m = $("#user-msg"); m.className = "msg"; m.textContent = "Creating…";
-  const name = $("#u-name").value.trim(), email = $("#u-email").value.trim().toLowerCase(), pass = $("#u-pass").value;
+  const name = $("#u-name").value.trim(), username = cleanUsername($("#u-username").value), realEmail = $("#u-email").value.trim().toLowerCase(), pass = $("#u-pass").value;
+  if (!validUsername(username)) { m.className = "msg err"; m.textContent = "Username: 3–24 letters/numbers (dot, dash, underscore allowed), no spaces."; return; }
+  const email = realEmail || `${username}@${LOGIN_DOMAIN}`;
   busy(true);
+  try { if ((await getDoc(doc(db, "usernames", username))).exists()) { m.className = "msg err"; m.textContent = `Username "${username}" is taken.`; busy(false); return; } }
+  catch (err) { m.className = "msg err"; m.textContent = friendly(err) + " (publish the updated Firestore rules)"; busy(false); return; }
   let sec;
   try {
     // A second Firebase app instance creates the login without signing the admin out.
@@ -753,13 +792,14 @@ $("#user-form").addEventListener("submit", async e => {
     await signOut(secAuth);
     const uid = cred.user.uid;
     await setDoc(doc(db, "users", uid), {
-      name, email, role: $("#u-role").value, active: true,
+      name, username, email, role: $("#u-role").value, active: true,
       openingBalance: parseFloat($("#u-opening").value) || 0,
       createdAt: serverTimestamp(), createdBy: S.user.email
     });
+    await setDoc(doc(db, "usernames", username), { email, uid });
     await setDoc(doc(db, "users", uid, "books", "main"), { name: "Cash book", currency: $("#u-cur").value, openingBalance: parseFloat($("#u-opening").value) || 0, order: 0, createdAt: serverTimestamp() });
     await seedHeads(uid);
-    m.className = "msg ok"; m.textContent = `Created ${name}. Login: ${email} / the password you set.`;
+    m.className = "msg ok"; m.textContent = `Created ${name}. Login: ${username} / the password you set.`;
     e.target.reset(); $("#u-opening").value = 0; $("#u-cur").value = DEFAULT_CURRENCY;
   } catch (err) { m.className = "msg err"; m.textContent = friendly(err); }
   finally { if (sec) deleteApp(sec).catch(() => {}); busy(false); }
@@ -770,7 +810,9 @@ function openUserEdit(id) {
   const u = S.users.find(x => x.id === id); editingUser = u;
   $("#ue-name").value = u.name || ""; $("#ue-role").value = u.role || "user";
   $("#ue-active").value = String(u.active !== false);
-  $("#ue-email").textContent = u.email;
+  $("#ue-username").value = u.username || "";
+  $("#ue-email").textContent = isPlaceholder(u.email) ? "No email — sign-in by username only" : "Email: " + u.email;
+  $("#ue-reset").textContent = isPlaceholder(u.email) ? "Set new password" : "Send password reset email";
   $("#user-modal").classList.remove("hidden");
 }
 $("#user-edit-form").addEventListener("submit", async e => {
@@ -778,15 +820,69 @@ $("#user-edit-form").addEventListener("submit", async e => {
   const u = editingUser, self = u.id === S.user.uid;
   const upd = { name: $("#ue-name").value.trim(), role: $("#ue-role").value, active: $("#ue-active").value === "true" };
   if (self && (upd.role !== "admin" || !upd.active)) { toast("You can't remove your own admin access"); return; }
+  const newU = cleanUsername($("#ue-username").value);
+  if (newU && newU !== (u.username || "")) {
+    if (!validUsername(newU)) { toast("Username: 3–24 letters/numbers, no spaces"); return; }
+    try {
+      const taken = await getDoc(doc(db, "usernames", newU));
+      if (taken.exists() && taken.data().uid !== u.id) { toast(`Username "${newU}" is taken`); return; }
+      await setDoc(doc(db, "usernames", newU), { email: u.email, uid: u.id });
+      if (u.username) await deleteDoc(doc(db, "usernames", u.username));
+      upd.username = newU;
+    } catch (err) { toast(friendly(err) + " (publish the updated Firestore rules)", 5000); return; }
+  }
   try {
     await updateDoc(doc(db, "users", u.id), upd);
     $("#user-modal").classList.add("hidden"); toast("User updated"); }
   catch (err) { toast(friendly(err)); }
 });
 $("#ue-reset").addEventListener("click", async () => {
+  if (isPlaceholder(editingUser.email)) return adminSetPassword(editingUser);
   try { await sendPasswordResetEmail(auth, editingUser.email); toast("Reset email sent to " + editingUser.email); }
   catch (err) { toast(friendly(err)); }
 });
+
+// Username-only users have no email to reset with, and a browser app can't change another
+// person's password. So the admin gives them a fresh login with the same username and moves
+// all their data (books, heads, entries, receipts) across; the old login is switched off.
+async function adminSetPassword(u) {
+  if (u.id === S.user.uid) { toast("Use the 🔑 button to change your own password"); return; }
+  const nw = prompt(`New password for ${u.name} (${u.username}) — at least 6 characters`);
+  if (!nw) return;
+  if (nw.length < 6) { toast("Password must be at least 6 characters"); return; }
+  let sec;
+  try {
+    busy(true, "Copying data…");
+    const acc = await exportAccount(u.id, true);
+    sec = initializeApp(firebaseConfig, "creator-" + Date.now());
+    const secAuth = getAuth(sec);
+    const email = `${u.username}.${Date.now().toString(36)}@${LOGIN_DOMAIN}`;
+    const cred = await createUserWithEmailAndPassword(secAuth, email, nw);
+    await signOut(secAuth);
+    const nu = cred.user.uid;
+    await setDoc(doc(db, "users", nu), { name: u.name, username: u.username, email, role: u.role || "user", active: true, openingBalance: +u.openingBalance || 0, createdAt: serverTimestamp(), createdBy: S.user.email, replaces: u.id });
+    busy(true, "Moving books & entries…");
+    await writeAll(nu, "books", acc.books || [], 400);
+    await writeAll(nu, "heads", acc.heads || [], 400);
+    await writeAll(nu, "entries", acc.entries || [], 400);
+    for (let i = 0; i < (acc.receipts || []).length; i++) {
+      busy(true, `Moving receipts ${i + 1}/${acc.receipts.length}…`);
+      const { id, ...rest } = acc.receipts[i];
+      await setDoc(doc(db, "users", nu, "receipts", id), revive(rest));
+    }
+    if (acc.settings) await setDoc(doc(db, "users", nu, "settings", "main"), acc.settings);
+    await setDoc(doc(db, "usernames", u.username), { email, uid: nu });
+    busy(true, "Removing old copy…");
+    for (const name of ["receipts", "entries", "heads", "books", "settings"]) {
+      const docs = (await getDocs(collection(db, "users", u.id, name))).docs;
+      for (let i = 0; i < docs.length; i += 400) { const b = writeBatch(db); docs.slice(i, i + 400).forEach(d => b.delete(d.ref)); await b.commit(); }
+    }
+    await updateDoc(doc(db, "users", u.id), { active: false, archived: true, replacedBy: nu });
+    $("#user-modal").classList.add("hidden");
+    toast(`New password set. ${u.name} signs in with "${u.username}" and the new password.`, 5000);
+  } catch (err) { console.error(err); toast("Could not set password: " + friendly(err), 6000); }
+  finally { if (sec) deleteApp(sec).catch(() => {}); busy(false); }
+}
 
 /* ---------------- reports ---------------- */
 function fillReportScope() {
@@ -883,7 +979,7 @@ function buildTables(d, withLoc = true) {
       const E = d.base.filter(e => e.uid === u.id);
       const p = sums(d.rows.filter(e => e.uid === u.id));
       const bal = booksFor(u.id).reduce((t, b) => t + (+b.openingBalance || 0), 0) + sums(E).net;
-      return [u.name, u.email, curOf(u.id), round2(p.inc), round2(p.exp), round2(p.net), round2(bal)];
+      return [u.name, u.username || u.email, curOf(u.id), round2(p.inc), round2(p.exp), round2(p.net), round2(bal)];
     });
   }
   return { entryHead, entryRows, headRows, dayRows, userRows };
@@ -897,7 +993,7 @@ $("#dl-xlsx").addEventListener("click", () => {
   const summary = [
     ["Expense report"], ["Account", d.title], ["Period", rangeLabel(d.r)],
     ["Filter", [d.type && (d.type === "income" ? "Income only" : "Expense only"), d.head].filter(Boolean).join(" · ") || "None"],
-    ["Generated", new Date().toLocaleString("en-GB") + " by " + S.user.email], [],
+    ["Generated", new Date().toLocaleString("en-GB") + " by " + (S.profile?.name || personName(S.user.email))], [],
     ["Currency", d.cur === "MIXED" ? "Mixed — see By user sheet" : d.cur], [], [`Opening balance (b/f)`, round2(d.bf)], ["Income", round2(d.s.inc)], ["Expense", round2(d.s.exp)],
     ["Net", round2(d.s.net)], [`Closing balance`, round2(d.closing)], ["Entries", d.s.count]
   ];
@@ -905,7 +1001,7 @@ $("#dl-xlsx").addEventListener("click", () => {
   XLSX.utils.book_append_sheet(wb, sheet([t.entryHead, ...t.entryRows, [], totalRow(t.entryHead, d)], t.entryHead.map(h => ({ Description: 34, Head: 22, User: 20, Book: 16, Location: 22, Map: 40 }[h] || 13))), "Entries");
   XLSX.utils.book_append_sheet(wb, sheet([["Type", "Head", "Total"], ...t.headRows], [12, 28, 14]), "By head");
   XLSX.utils.book_append_sheet(wb, sheet([["Date", "Income", "Expense", "Net"], ...t.dayRows], [13, 13, 13, 13]), "Daily");
-  if (t.userRows) XLSX.utils.book_append_sheet(wb, sheet([["User", "Email", "Currency", "Income (period)", "Expense (period)", "Net (period)", "Current balance"], ...t.userRows], [22, 28, 10, 16, 16, 14, 16]), "By user");
+  if (t.userRows) XLSX.utils.book_append_sheet(wb, sheet([["User", "Login", "Currency", "Income (period)", "Expense (period)", "Net (period)", "Current balance"], ...t.userRows], [22, 28, 10, 16, 16, 14, 16]), "By user");
   XLSX.writeFile(wb, fileBase(d) + ".xlsx");
 });
 function sheet(aoa, widths) { const ws = XLSX.utils.aoa_to_sheet(aoa); ws["!cols"] = widths.map(w => ({ wch: w })); return ws; }

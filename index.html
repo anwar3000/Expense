@@ -36,7 +36,7 @@
   <form id="login-form" class="card narrow">
     <div class="brand big"><img class="logo" src="icon.svg" alt=""><span><b>Expense</b></span></div>
     <p class="muted">Sign in to your account</p>
-    <label>Email<input type="email" id="login-email" required autocomplete="username"></label>
+    <label>Username or email<input type="text" id="login-email" required autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
     <label>Password<input type="password" id="login-pass" required autocomplete="current-password"></label>
     <button class="btn primary block" type="submit">Sign in</button>
     <button class="btn link" type="button" id="forgot-btn">Forgot password?</button>
@@ -60,6 +60,7 @@
     <div class="brand"><img class="logo" src="icon.svg" alt=""><span><b>Expense</b></span></div>
     <div class="top-right">
       <span id="me-name" class="me"></span>
+      <button class="btn small light" id="pw-btn" title="Change password">🔑</button>
       <button class="btn small light" id="logout-btn">Sign out</button>
     </div>
   </header>
@@ -215,7 +216,8 @@
         <h3>Create user</h3>
         <form id="user-form" class="form-grid">
           <label>Full name<input id="u-name" required></label>
-          <label>Email<input id="u-email" type="email" required></label>
+          <label>Username (for login)<input id="u-username" required autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="e.g. ravi"></label>
+          <label>Email (optional)<input id="u-email" type="email" placeholder="only for password reset"></label>
           <label>Password<input id="u-pass" type="text" minlength="6" required placeholder="min 6 characters"></label>
           <label>Role<select id="u-role"><option value="user">User</option><option value="admin">Admin</option></select></label>
           <label>Currency (first book)<select id="u-cur"></select></label>
@@ -303,6 +305,7 @@
     <div class="row between"><h3 style="margin:0">Edit user</h3><button type="button" class="icon-btn" data-close>✕</button></div>
     <div class="form-grid">
       <label>Full name<input id="ue-name" required></label>
+      <label>Username (for login)<input id="ue-username" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
       <label>Role<select id="ue-role"><option value="user">User</option><option value="admin">Admin</option></select></label>
       <label>Status<select id="ue-active"><option value="true">Active</option><option value="false">Disabled</option></select></label>
     </div>

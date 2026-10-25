@@ -2,7 +2,7 @@
 
 Web app (installable on phones) for staff to record income and expenses with receipts, against their own account heads. Each user's account is fully isolated; admins see every account, create users and download combined reports.
 
-**Live:** https://anwar3000.github.io/expense/
+**Live:** https://anwar3000.github.io/Expense/
 
 ## Features
 - One screen: current balance, Today / This week / This month / This year totals, head-wise breakdown and the entry list for any period (today, week, month, year, all, custom).

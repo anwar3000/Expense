@@ -241,3 +241,6 @@ label.chk input{width:18px;height:18px}
 .dlg-msg{margin:0;white-space:pre-line;color:var(--muted);font-size:.92rem}
 .dlg-card input{font-size:16px}
 .btn.danger-fill{background:#dc2626;border-color:#dc2626;color:#fff}
+.pw-wrap{position:relative;display:block}
+.pw-wrap input{width:100%;padding-right:44px}
+.pw-eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);border:0;background:none;font-size:1.1rem;cursor:pointer;padding:6px}

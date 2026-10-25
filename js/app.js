@@ -147,7 +147,7 @@ function uiDialog({ title, message = "", fields = [], ok = "OK", danger = false 
     wrap.innerHTML = `<form class="modal-card dlg-card">
       <h3 style="margin:0">${esc(title)}</h3>
       ${message ? `<p class="dlg-msg">${esc(message)}</p>` : ""}
-      ${fields.map((f, i) => `<label>${esc(f.label)}<input data-i="${i}" type="${f.type || "text"}" ${f.min ? `minlength="${f.min}"` : ""} required autocomplete="${f.type === "password" ? "new-password" : "off"}" autocapitalize="none"></label>`).join("")}
+      ${fields.map((f, i) => `<label>${esc(f.label)}<input data-i="${i}" type="${f.type || "text"}" ${f.min ? `minlength="${f.min}"` : ""} required autocomplete="${f.type === "password" ? "new-password" : "off"}" autocapitalize="off" autocorrect="off" spellcheck="false"></label>`).join("")}
       <div class="row gap" style="justify-content:flex-end">
         <button type="button" class="btn" data-cancel>Cancel</button>
         <button type="submit" class="btn ${danger ? "danger-fill" : "primary"}">${esc(ok)}</button>
@@ -176,7 +176,7 @@ async function emailForLogin(input) {
     return v;
   }
   const snap = await getDoc(doc(db, "usernames", v));
-  if (!snap.exists()) { const e = new Error("No user with that username."); e.code = "auth/user-not-found"; throw e; }
+  if (!snap.exists()) { const e = new Error(`No account with username "${v}". Check the spelling, or sign in with email.`); e.code = "app/no-username"; throw e; }
   return snap.data().email;
 }
 // Show a person's name instead of their login email
@@ -189,7 +189,16 @@ function personName(email) {
 $("#login-form").addEventListener("submit", async e => {
   e.preventDefault();
   const m = $("#login-msg"); m.className = "msg"; m.textContent = "Signing in…";
-  try { await signInWithEmailAndPassword(auth, await emailForLogin($("#login-email").value), $("#login-pass").value); m.textContent = ""; }
+  try {
+    const email = await emailForLogin($("#login-email").value), pw = $("#login-pass").value;
+    try { await signInWithEmailAndPassword(auth, email, pw); }
+    catch (err) {
+      // phone keyboards sometimes add a space after the password
+      if (pw.trim() !== pw && /invalid-credential|wrong-password/.test(err.code || "")) await signInWithEmailAndPassword(auth, email, pw.trim());
+      else throw err;
+    }
+    m.textContent = "";
+  }
   catch (err) { m.className = "msg err"; m.textContent = friendly(err); }
 });
 $("#forgot-btn").addEventListener("click", async () => {
@@ -203,6 +212,7 @@ $("#forgot-btn").addEventListener("click", async () => {
   catch (err) { m.className = "msg err"; m.textContent = friendly(err); }
 });
 $("#logout-btn").addEventListener("click", () => signOut(auth));
+$("#pw-eye").addEventListener("click", () => { const i = $("#login-pass"); i.type = i.type === "password" ? "text" : "password"; });
 $("#pw-btn").addEventListener("click", async () => {
   const v = await uiDialog({ title: "Change your password", fields: [{ label: "Current password", type: "password" }, { label: "New password (min 6)", type: "password", min: 6 }], ok: "Change" });
   if (!v) return; const [cur, nw] = v;
@@ -216,7 +226,8 @@ $("#blocked-logout").addEventListener("click", () => signOut(auth));
 
 function friendly(err) {
   const c = err.code || "";
-  if (c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found")) return "Wrong username or password.";
+  if (c === "app/no-username") return err.message;
+  if (c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found")) return "Wrong password. Passwords are case-sensitive — tap 👁 to check what you typed.";
   if (c.includes("email-already-in-use")) return "That username or email already has a login.";
   if (c.includes("requires-recent-login")) return "Please sign out and sign in again, then retry.";
   if (c.includes("weak-password")) return "Password must be at least 6 characters.";
@@ -827,7 +838,7 @@ $("#user-form").addEventListener("submit", async e => {
     await setDoc(doc(db, "usernames", username), { email, uid });
     await setDoc(doc(db, "users", uid, "books", "main"), { name: "Cash book", currency: $("#u-cur").value, openingBalance: parseFloat($("#u-opening").value) || 0, order: 0, createdAt: serverTimestamp() });
     await seedHeads(uid);
-    m.className = "msg ok"; m.textContent = `Created ${name}. Login: ${username} / the password you set.`;
+    m.className = "msg ok"; m.textContent = `Created ${name}. Username: ${username} · Password: ${pass}`;
     e.target.reset(); $("#u-opening").value = 0; $("#u-cur").value = DEFAULT_CURRENCY;
   } catch (err) { m.className = "msg err"; m.textContent = friendly(err); }
   finally { if (sec) deleteApp(sec).catch(() => {}); busy(false); }
@@ -924,7 +935,8 @@ async function adminSetPassword(u) {
     }
     await updateDoc(doc(db, "users", u.id), { active: false, archived: true, replacedBy: nu });
     $("#user-modal").classList.add("hidden");
-    toast(`New password set. ${u.name} signs in with "${uname}"${realEmail ? ` or ${realEmail}` : ""} and the new password.`, 6000);
+    busy(false);
+    await uiDialog({ title: "Password changed", message: `${u.name} can now sign in with:\n\nUsername:  ${uname}${realEmail ? `\n(or email:  ${realEmail})` : ""}\nPassword:  ${nw}\n\nPasswords are case-sensitive.`, ok: "Done" });
   } catch (err) { console.error(err); toast("Could not set password: " + friendly(err), 6000); }
   finally { if (sec) deleteApp(sec).catch(() => {}); busy(false); }
 }

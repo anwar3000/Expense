@@ -37,7 +37,7 @@
     <div class="brand big"><img class="logo" src="icon.svg" alt=""><span><b>Expense</b></span></div>
     <p class="muted">Sign in to your account</p>
     <label>Username or email<input type="text" id="login-email" required autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
-    <label>Password<input type="password" id="login-pass" required autocomplete="current-password"></label>
+    <label>Password<span class="pw-wrap"><input type="password" id="login-pass" required autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false"><button type="button" id="pw-eye" class="pw-eye" aria-label="Show password">👁</button></span></label>
     <button class="btn primary block" type="submit">Sign in</button>
     <button class="btn link" type="button" id="forgot-btn">Forgot password?</button>
     <p id="login-msg" class="msg"></p>
@@ -218,7 +218,7 @@
           <label>Full name<input id="u-name" required></label>
           <label>Username (for login)<input id="u-username" required autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="e.g. ravi"></label>
           <label>Email (optional)<input id="u-email" type="email" placeholder="only for password reset"></label>
-          <label>Password<input id="u-pass" type="text" minlength="6" required placeholder="min 6 characters"></label>
+          <label>Password<input id="u-pass" type="text" minlength="6" required placeholder="min 6 characters" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off"></label>
           <label>Role<select id="u-role"><option value="user">User</option><option value="admin">Admin</option></select></label>
           <label>Currency (first book)<select id="u-cur"></select></label>
           <label>Opening balance<input id="u-opening" type="number" step="0.01" value="0"></label>

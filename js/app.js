@@ -5,7 +5,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
-  collection, collectionGroup, query, where, orderBy, onSnapshot, writeBatch, serverTimestamp
+  collection, collectionGroup, query, where, orderBy, onSnapshot, writeBatch, serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js";
 import { firebaseConfig, SUPER_ADMIN_EMAIL, CURRENCY, WEEK_START, RECAPTCHA_KEY, AI_MODELS } from "./config.js";
@@ -26,7 +26,7 @@ function toast(msg, ms = 2600) {
   const t = $("#toast"); t.textContent = msg; t.classList.remove("hidden");
   clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add("hidden"), ms);
 }
-const busy = on => $("#busy").classList.toggle("hidden", !on);
+const busy = (on, msg = "") => { $("#busy").classList.toggle("hidden", !on); $("#busy-msg").textContent = msg; };
 
 function rangeFor(key, from, to) {
   const now = new Date(), t = ymd(now);
@@ -260,7 +260,7 @@ function renderHome() {
     const inc = e.type === "income";
     out += `<div class="entry" data-id="${e.id}">
       <div class="dot ${inc ? "inc" : "exp"}">${inc ? "↓" : "↑"}</div>
-      <div><div class="h">${esc(e.headName || "—")}</div><div class="n">${esc(e.note || e.mode || "")}${e.receiptCount ? ` · 📎${e.receiptCount}` : ""}</div></div>
+      <div><div class="h">${esc(e.headName || "—")}</div><div class="n">${esc(e.note || e.mode || "")}${e.receiptCount ? ` · 📎${e.receiptCount}` : ""}${e.location?.lat != null ? ` · <span class="pin">📍</span>` : ""}</div></div>
       <div class="a ${inc ? "inc" : "exp"}">${inc ? "+" : "−"}${money(e.amount)}<small>${esc(e.mode || "")}</small></div></div>`;
   });
   if (list.length > LIMIT) out += `<div class="empty"><button class="btn small" id="more-btn">Show more (${list.length - LIMIT})</button></div>`;
@@ -304,6 +304,7 @@ async function openEntry(entry) {
   $("#e-note").value = entry?.note || "";
   $("#e-ref").value = entry?.ref || "";
   $("#e-meta").textContent = entry ? metaLine(entry) : "";
+  if (entry) showGeo(entry.location); else captureLocation();
   renderThumbs();
   $$(".ai-filled").forEach(el => el.classList.remove("ai-filled"));
   $("#entry-modal").classList.remove("hidden");
@@ -315,6 +316,36 @@ async function openEntry(entry) {
     renderThumbs();
   }
 }
+
+/* ---------------- GPS location ---------------- */
+const mapUrl = l => `https://maps.google.com/?q=${l.lat},${l.lng}`;
+function showGeo(loc) {
+  const el = $("#e-geo");
+  if (!loc) { el.innerHTML = `<span class="muted">📍 No location recorded</span>`; return; }
+  if (loc.status === "pending") { el.innerHTML = `<span class="dot-spin"></span> Getting location…`; return; }
+  if (loc.lat == null) {
+    el.innerHTML = loc.status === "denied"
+      ? `<span class="warn-t">📍 Location blocked — allow location for this site in browser settings</span>`
+      : `<span class="warn-t">📍 Location not available (turn on GPS)</span> <button type="button" class="btn small" id="geo-retry">Retry</button>`;
+    $("#geo-retry")?.addEventListener("click", captureLocation);
+    return;
+  }
+  el.innerHTML = `📍 <a href="${mapUrl(loc)}" target="_blank" rel="noopener">${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}</a> <span class="muted">±${Math.round(loc.acc || 0)} m</span>`;
+}
+function captureLocation() {
+  S.geo = { status: "pending" }; showGeo(S.geo);
+  S.geoPromise = new Promise(resolve => {
+    if (!navigator.geolocation) { S.geo = { status: "unavailable" }; showGeo(S.geo); return resolve(); }
+    navigator.geolocation.getCurrentPosition(p => {
+      S.geo = { status: "ok", lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, at: new Date(p.timestamp).toISOString() };
+      if (!S.editing) showGeo(S.geo); resolve();
+    }, err => {
+      S.geo = { status: err.code === 1 ? "denied" : "unavailable" };
+      if (!S.editing) showGeo(S.geo); resolve();
+    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+  });
+}
+
 function metaLine(e) {
   const f = ts => ts?.toDate ? ts.toDate().toLocaleString("en-GB") : "";
   let s = `Added ${f(e.createdAt)}${e.createdBy ? " by " + e.createdBy : ""}`;
@@ -422,6 +453,10 @@ $("#entry-form").addEventListener("submit", async e => {
   else Object.assign(data, { createdAt: serverTimestamp(), createdBy: who, editCount: 0 });
   busy(true);
   try {
+    if (!ed) {
+      if (S.geo?.status === "pending") await Promise.race([S.geoPromise, new Promise(r => setTimeout(r, 8000))]);
+      data.location = S.geo?.status === "ok" ? { lat: S.geo.lat, lng: S.geo.lng, acc: Math.round(S.geo.acc), at: S.geo.at } : { status: S.geo?.status || "unavailable" };
+    }
     for (const r of S.newReceipts)
       await addDoc(collection(db, "users", uid, "receipts"), { entryId: ref.id, name: r.name, mime: r.mime, data: r.data, createdAt: serverTimestamp(), createdBy: who });
     for (const id of S.removedReceipts) await deleteDoc(doc(db, "users", uid, "receipts", id));
@@ -630,16 +665,17 @@ function renderReportPreview() {
 }
 
 const userName = uid => S.users.find(u => u.id === uid)?.name || (uid === S.viewUid ? S.viewProfile?.name : "") || uid;
-function buildTables(d) {
+function buildTables(d, withLoc = true) {
   const all = d.scope === "__all";
   const showRun = !d.filtered && !all;
   let run = d.bf;
-  const entryHead = ["Date", ...(all ? ["User"] : []), "Head", "Description", "Ref", "Mode", "Income", "Expense", ...(showRun ? ["Balance"] : []), "Receipts"];
+  const entryHead = ["Date", ...(all ? ["User"] : []), "Head", "Description", "Ref", "Mode", "Income", "Expense", ...(showRun ? ["Balance"] : []), "Receipts", ...(withLoc ? ["Location", "Map"] : [])];
   const entryRows = d.rows.map(e => {
     const inc = e.type === "income" ? +e.amount : 0, exp = e.type === "expense" ? +e.amount : 0;
     run += inc - exp;
     return [e.date, ...(all ? [userName(e.uid)] : []), e.headName || "", e.note || "", e.ref || "", e.mode || "",
-      inc || "", exp || "", ...(showRun ? [Math.round(run * 100) / 100] : []), e.receiptCount || 0];
+      inc || "", exp || "", ...(showRun ? [Math.round(run * 100) / 100] : []), e.receiptCount || 0,
+      ...(withLoc ? (e.location?.lat != null ? [`${e.location.lat.toFixed(5)}, ${e.location.lng.toFixed(5)}`, mapUrl(e.location)] : [e.location?.status ? "No GPS (" + e.location.status + ")" : "", ""]) : [])];
   });
   const hm = new Map();
   d.rows.forEach(e => { const k = `${e.type}|${e.headName || "—"}`; hm.set(k, (hm.get(k) || 0) + +e.amount); });
@@ -672,7 +708,7 @@ $("#dl-xlsx").addEventListener("click", () => {
     ["Net", round2(d.s.net)], [`Closing balance ${CURRENCY}`, round2(d.closing)], ["Entries", d.s.count]
   ];
   XLSX.utils.book_append_sheet(wb, sheet(summary, [28, 40]), "Summary");
-  XLSX.utils.book_append_sheet(wb, sheet([t.entryHead, ...t.entryRows, [], totalRow(t.entryHead, d)], t.entryHead.map(h => ({ Description: 34, Head: 22, User: 20 }[h] || 13))), "Entries");
+  XLSX.utils.book_append_sheet(wb, sheet([t.entryHead, ...t.entryRows, [], totalRow(t.entryHead, d)], t.entryHead.map(h => ({ Description: 34, Head: 22, User: 20, Location: 22, Map: 40 }[h] || 13))), "Entries");
   XLSX.utils.book_append_sheet(wb, sheet([["Type", "Head", "Total"], ...t.headRows], [12, 28, 14]), "By head");
   XLSX.utils.book_append_sheet(wb, sheet([["Date", "Income", "Expense", "Net"], ...t.dayRows], [13, 13, 13, 13]), "Daily");
   if (t.userRows) XLSX.utils.book_append_sheet(wb, sheet([["User", "Email", "Income (period)", "Expense (period)", "Net (period)", "Current balance"], ...t.userRows], [22, 28, 16, 16, 14, 16]), "By user");
@@ -698,7 +734,7 @@ let logoData = null;
 
 $("#dl-pdf").addEventListener("click", () => {
   if (!window.jspdf) { toast("PDF library not loaded — check internet"); return; }
-  const d = reportData(), t = buildTables(d);
+  const d = reportData(), t = buildTables(d, false);
   const pdf = new window.jspdf.jsPDF({ orientation: t.entryHead.length > 9 ? "landscape" : "portrait", unit: "pt", format: "a4" });
   const W = pdf.internal.pageSize.getWidth(), orange = [232, 100, 30], dark = [43, 47, 51];
   pdf.setFillColor(...dark); pdf.rect(0, 0, W, 56, "F");
@@ -737,6 +773,94 @@ $("#dl-pdf").addEventListener("click", () => {
   pdf.save(fileBase(d) + ".pdf");
 });
 
+
+
+/* ---------------- backup: export / import ---------------- */
+const BACKUP_KIND = "expense-backup";
+const plain = o => Object.fromEntries(Object.entries(o || {}).map(([k, v]) => [k, v?.toDate ? { __ts: v.toDate().toISOString() } : v]));
+const revive = o => Object.fromEntries(Object.entries(o || {}).map(([k, v]) => [k, v && typeof v === "object" && v.__ts ? Timestamp.fromDate(new Date(v.__ts)) : v]));
+
+async function exportAccount(uid, withReceipts) {
+  const prof = (await getDoc(doc(db, "users", uid))).data() || {};
+  const grab = async name => (await getDocs(collection(db, "users", uid, name))).docs.map(d => ({ id: d.id, ...plain(d.data()) }));
+  const acc = { uid, profile: plain(prof), heads: await grab("heads"), entries: await grab("entries") };
+  if (withReceipts) acc.receipts = await grab("receipts");
+  return acc;
+}
+
+$("#bk-export").addEventListener("click", async () => {
+  const all = isAdmin() && $("#bk-scope").value === "all";
+  const uids = all ? S.users.map(u => u.id) : [S.viewUid];
+  const withReceipts = $("#bk-receipts").checked;
+  try {
+    const accounts = [];
+    for (let i = 0; i < uids.length; i++) {
+      busy(true, `Exporting ${i + 1} of ${uids.length}…`);
+      accounts.push(await exportAccount(uids[i], withReceipts));
+    }
+    const data = { kind: BACKUP_KIND, version: 1, exportedAt: new Date().toISOString(), exportedBy: S.user.email, includesReceipts: withReceipts, accounts };
+    const name = all ? "All_users" : (S.viewProfile?.name || "account").replace(/[^\w]+/g, "_");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" }));
+    a.download = `Expense_backup_${name}_${todayStr()}.json`; a.click();
+    const n = accounts.reduce((t, x) => t + x.entries.length, 0);
+    toast(`Backup saved: ${accounts.length} account(s), ${n} entries`);
+  } catch (err) { console.error(err); toast(friendly(err), 5000); }
+  finally { busy(false); }
+});
+
+async function writeAll(uid, name, rows, perBatch) {
+  for (let i = 0; i < rows.length; i += perBatch) {
+    const b = writeBatch(db);
+    rows.slice(i, i + perBatch).forEach(({ id, ...rest }) => b.set(doc(db, "users", uid, name, id), revive(rest)));
+    await b.commit();
+  }
+}
+
+$("#bk-file").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  let data;
+  try { data = JSON.parse(await f.text()); } catch { toast("That file is not a valid backup"); return; }
+  if (data?.kind !== BACKUP_KIND || !Array.isArray(data.accounts) || !data.accounts.length) { toast("That file is not an Expense backup"); return; }
+
+  // Decide where each account in the file goes
+  let plan = [];
+  if (data.accounts.length === 1) plan = [{ acc: data.accounts[0], uid: S.viewUid }];
+  else if (isAdmin()) {
+    plan = data.accounts.filter(a => S.users.some(u => u.id === a.uid)).map(a => ({ acc: a, uid: a.uid }));
+  } else {
+    const mine = data.accounts.find(a => a.uid === S.user.uid);
+    if (mine) plan = [{ acc: mine, uid: S.user.uid }];
+  }
+  if (!plan.length) { toast("No matching accounts in this backup"); return; }
+  const skipped = data.accounts.length - plan.length;
+  const lines = plan.map(p => {
+    const target = p.uid === S.viewUid ? (S.viewProfile?.name || "this account") : userName(p.uid);
+    return `• ${p.acc.profile?.name || p.acc.uid} → ${target}: ${p.acc.heads?.length || 0} heads, ${p.acc.entries?.length || 0} entries, ${p.acc.receipts?.length || 0} receipts`;
+  });
+  if (!confirm(`Restore this backup (${new Date(data.exportedAt).toLocaleString("en-GB")})?\n\n${lines.join("\n")}${skipped ? `\n\n${skipped} account(s) in the file have no matching user and will be skipped.` : ""}\n\nEntries with the same ID are updated; nothing is duplicated.`)) return;
+
+  try {
+    for (let i = 0; i < plan.length; i++) {
+      const { acc, uid } = plan[i], step = `(${i + 1}/${plan.length})`;
+      busy(true, `Restoring heads & entries ${step}…`);
+      await writeAll(uid, "heads", acc.heads || [], 400);
+      await writeAll(uid, "entries", acc.entries || [], 400);
+      const rec = acc.receipts || [];
+      for (let r = 0; r < rec.length; r++) {
+        busy(true, `Restoring receipts ${step} ${r + 1}/${rec.length}…`);
+        const { id, ...rest } = rec[r];
+        await setDoc(doc(db, "users", uid, "receipts", id), revive(rest));
+      }
+      const p = acc.profile || {};
+      if (isAdmin()) await updateDoc(doc(db, "users", uid), { openingBalance: +p.openingBalance || 0, ...(p.name ? { name: p.name } : {}) });
+      else await updateDoc(doc(db, "users", uid), { openingBalance: +p.openingBalance || 0 });
+    }
+    toast(`Restore complete${skipped ? ` (${skipped} skipped)` : ""}`, 4000);
+  } catch (err) { console.error(err); toast("Restore stopped: " + friendly(err), 6000); }
+  finally { busy(false); }
+});
 
 /* ---------------- bill reading (Gemini via Firebase AI Logic) ---------------- */
 ["e-amount", "e-date", "e-head", "e-mode", "e-note", "e-ref"].forEach(id =>

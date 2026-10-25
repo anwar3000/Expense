@@ -665,7 +665,7 @@ $("#dl-xlsx").addEventListener("click", () => {
   if (!window.XLSX) { toast("Excel library not loaded — check internet"); return; }
   const d = reportData(), t = buildTables(d), wb = XLSX.utils.book_new();
   const summary = [
-    ["LLCT Expense report"], ["Account", d.title], ["Period", rangeLabel(d.r)],
+    ["Expense report"], ["Account", d.title], ["Period", rangeLabel(d.r)],
     ["Filter", [d.type && (d.type === "income" ? "Income only" : "Expense only"), d.head].filter(Boolean).join(" · ") || "None"],
     ["Generated", new Date().toLocaleString("en-GB") + " by " + S.user.email], [],
     [`Opening balance (b/f) ${CURRENCY}`, round2(d.bf)], ["Income", round2(d.s.inc)], ["Expense", round2(d.s.exp)],
@@ -692,15 +692,19 @@ $("#dl-csv").addEventListener("click", () => {
   a.download = fileBase(d) + ".csv"; a.click();
 });
 
+// App logo for PDF headers
+let logoData = null;
+(() => { const i = new Image(); i.onload = () => { const c = document.createElement("canvas"); c.width = c.height = 128; c.getContext("2d").drawImage(i, 0, 0, 128, 128); try { logoData = c.toDataURL("image/png"); } catch {} }; i.src = "icon-192.png"; })();
+
 $("#dl-pdf").addEventListener("click", () => {
   if (!window.jspdf) { toast("PDF library not loaded — check internet"); return; }
   const d = reportData(), t = buildTables(d);
   const pdf = new window.jspdf.jsPDF({ orientation: t.entryHead.length > 9 ? "landscape" : "portrait", unit: "pt", format: "a4" });
   const W = pdf.internal.pageSize.getWidth(), orange = [232, 100, 30], dark = [43, 47, 51];
   pdf.setFillColor(...dark); pdf.rect(0, 0, W, 56, "F");
-  pdf.setFillColor(...orange); pdf.roundedRect(28, 14, 28, 28, 5, 5, "F");
-  pdf.setTextColor(255); pdf.setFont("helvetica", "bold"); pdf.setFontSize(11); pdf.text("LL", 34, 32);
-  pdf.setFontSize(15); pdf.text("LLCT Expense report", 66, 33);
+  if (logoData) pdf.addImage(logoData, "PNG", 28, 14, 28, 28);
+  pdf.setTextColor(255); pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(15); pdf.text("Expense report", 66, 33);
   pdf.setFont("helvetica", "normal"); pdf.setFontSize(9); pdf.text(new Date().toLocaleString("en-GB"), W - 28, 33, { align: "right" });
   pdf.setTextColor(30); pdf.setFontSize(10);
   pdf.text(`Account: ${d.title}`, 28, 78); pdf.text(`Period: ${rangeLabel(d.r)}`, 28, 93);

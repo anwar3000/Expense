@@ -1,4 +1,4 @@
-# LLCT Expense
+# Expense
 
 Web app (installable on phones) for staff to record income and expenses with receipts, against their own account heads. Each user's account is fully isolated; admins see every account, create users and download combined reports.
 

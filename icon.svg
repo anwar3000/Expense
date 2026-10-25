@@ -1,1 +1,32 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="96" fill="#E8641E"/><text x="256" y="300" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-weight="700" font-size="190" fill="#fff">LL</text><rect x="136" y="350" width="240" height="22" rx="11" fill="#2b2f33"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF8A3D"/>
+      <stop offset="1" stop-color="#D9480F"/>
+    </linearGradient>
+    <linearGradient id="coin" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#34D399"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#7c2d12" flood-opacity=".35"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- receipt -->
+  <g filter="url(#sh)" transform="rotate(-6 236 250)">
+    <path d="M140 92 h192 a16 16 0 0 1 16 16 V404 l-26 -18 -26 18 -26 -18 -26 18 -26 -18 -26 18 -26 -18 -26 18 V108 a16 16 0 0 1 16 -16 z" fill="#ffffff"/>
+    <rect x="166" y="134" width="96" height="16" rx="8" fill="#2b2f33"/>
+    <rect x="166" y="178" width="140" height="12" rx="6" fill="#E5E7EB"/>
+    <rect x="166" y="212" width="120" height="12" rx="6" fill="#E5E7EB"/>
+    <rect x="166" y="246" width="140" height="12" rx="6" fill="#E5E7EB"/>
+    <rect x="166" y="300" width="56" height="16" rx="8" fill="#9CA3AF"/>
+    <rect x="250" y="296" width="62" height="24" rx="8" fill="#D9480F"/>
+  </g>
+  <!-- coin with up/down arrows (income / expense) -->
+  <g filter="url(#sh)">
+    <circle cx="362" cy="366" r="86" fill="url(#coin)" stroke="#ffffff" stroke-width="12"/>
+    <path d="M334 410 V330 m-22 22 l22 -24 22 24" fill="none" stroke="#fff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M390 322 V402 m-22 -22 l22 24 22 -24" fill="none" stroke="#fff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

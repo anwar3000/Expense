@@ -16,9 +16,10 @@ code{background:#f1f1f1;padding:1px 5px;border-radius:4px}
 .card{background:var(--card);border-radius:var(--radius);padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.05);margin-bottom:14px}
 .card.narrow{width:100%;max-width:380px}
 .brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:1.05rem}
-.brand b{color:var(--orange)}
+.brand b{color:inherit;font-weight:700;letter-spacing:-.2px}
 .brand.big{font-size:1.35rem;margin-bottom:8px}
-.logo{display:inline-grid;place-items:center;width:32px;height:32px;border-radius:8px;background:var(--orange);color:#fff;font-weight:700;font-size:.85rem}
+.logo{width:32px;height:32px;border-radius:8px;display:block}
+.brand.big .logo{width:44px;height:44px;border-radius:11px}
 
 label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted);margin-bottom:10px}
 input,select{font:inherit;color:var(--text);padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;min-width:0}

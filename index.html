@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#E8641E">
-  <title>LLCT Expense</title>
+  <title>Expense</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/app.css">
@@ -16,7 +16,7 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
-<div id="boot" style="padding:40px 20px;text-align:center;font-family:sans-serif;color:#555">Loading LLCT Expense…<div id="boot-err" style="color:#b91c1c;margin-top:16px;font-size:14px;white-space:pre-wrap"></div></div>
+<div id="boot" style="padding:40px 20px;text-align:center;font-family:sans-serif;color:#555">Loading Expense…<div id="boot-err" style="color:#b91c1c;margin-top:16px;font-size:14px;white-space:pre-wrap"></div></div>
 <script>
   window.addEventListener("error", function (e) { var b = document.getElementById("boot-err"); if (b) { document.getElementById("boot").style.display = "block"; b.textContent += "Error: " + (e.message || e.target && e.target.src || "load failed") + "\n"; } }, true);
   window.addEventListener("unhandledrejection", function (e) { var b = document.getElementById("boot-err"); if (b) { document.getElementById("boot").style.display = "block"; b.textContent += "Error: " + (e.reason && (e.reason.code || e.reason.message) || e.reason) + "\n"; } });
@@ -25,7 +25,7 @@
 <!-- Setup / not configured -->
 <section id="screen-setup" class="screen center hidden">
   <div class="card narrow">
-    <div class="brand big"><span class="logo">LL</span><span>LLCT <b>Expense</b></span></div>
+    <div class="brand big"><img class="logo" src="icon.svg" alt=""><span><b>Expense</b></span></div>
     <h2>Firebase not connected yet</h2>
     <p class="muted">Open <code>js/config.js</code> in the GitHub repo and paste the web app config from your Firebase project <b>expense</b> (Project settings → Your apps → Web app → SDK config).</p>
   </div>
@@ -34,7 +34,7 @@
 <!-- Login -->
 <section id="screen-login" class="screen center hidden">
   <form id="login-form" class="card narrow">
-    <div class="brand big"><span class="logo">LL</span><span>LLCT <b>Expense</b></span></div>
+    <div class="brand big"><img class="logo" src="icon.svg" alt=""><span><b>Expense</b></span></div>
     <p class="muted">Sign in to your account</p>
     <label>Email<input type="email" id="login-email" required autocomplete="username"></label>
     <label>Password<input type="password" id="login-pass" required autocomplete="current-password"></label>
@@ -47,7 +47,7 @@
 <!-- Blocked -->
 <section id="screen-blocked" class="screen center hidden">
   <div class="card narrow">
-    <div class="brand big"><span class="logo">LL</span><span>LLCT <b>Expense</b></span></div>
+    <div class="brand big"><img class="logo" src="icon.svg" alt=""><span><b>Expense</b></span></div>
     <h2 id="blocked-title">Account not available</h2>
     <p class="muted" id="blocked-text">Ask your admin to set up or re-activate your account.</p>
     <button class="btn" id="blocked-logout">Sign out</button>
@@ -57,7 +57,7 @@
 <!-- App -->
 <section id="screen-app" class="hidden">
   <header class="topbar">
-    <div class="brand"><span class="logo">LL</span><span>LLCT <b>Expense</b></span></div>
+    <div class="brand"><img class="logo" src="icon.svg" alt=""><span><b>Expense</b></span></div>
     <div class="top-right">
       <span id="me-name" class="me"></span>
       <button class="btn small light" id="logout-btn">Sign out</button>

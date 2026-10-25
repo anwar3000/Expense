@@ -146,7 +146,11 @@ const cleanUsername = v => String(v || "").trim().toLowerCase();
 const validUsername = v => /^[a-z0-9][a-z0-9._-]{2,23}$/.test(v);
 async function emailForLogin(input) {
   const v = cleanUsername(input);
-  if (v.includes("@")) return v;
+  if (v.includes("@")) {
+    // An email whose password the admin reset now points to the user's new login
+    try { const a = await getDoc(doc(db, "usernames", v)); if (a.exists()) return a.data().email; } catch {}
+    return v;
+  }
   const snap = await getDoc(doc(db, "usernames", v));
   if (!snap.exists()) { const e = new Error("No user with that username."); e.code = "auth/user-not-found"; throw e; }
   return snap.data().email;
@@ -154,7 +158,7 @@ async function emailForLogin(input) {
 // Show a person's name instead of their login email
 function personName(email) {
   if (!email) return "";
-  const u = S.users.find(x => x.email === email) || (S.profile?.email === email ? S.profile : null) || (S.viewProfile?.email === email ? S.viewProfile : null);
+  const u = S.users.find(x => x.email === email || (x.aliases || []).includes(email)) || (S.profile?.email === email ? S.profile : null) || (S.viewProfile?.email === email ? S.viewProfile : null);
   return u?.name || u?.username || String(email).split("@")[0];
 }
 
@@ -811,8 +815,10 @@ function openUserEdit(id) {
   $("#ue-name").value = u.name || ""; $("#ue-role").value = u.role || "user";
   $("#ue-active").value = String(u.active !== false);
   $("#ue-username").value = u.username || "";
-  $("#ue-email").textContent = isPlaceholder(u.email) ? "No email — sign-in by username only" : "Email: " + u.email;
-  $("#ue-reset").textContent = isPlaceholder(u.email) ? "Set new password" : "Send password reset email";
+  $("#ue-email").textContent = isPlaceholder(u.email) ? (u.contactEmail ? "Email: " + u.contactEmail + " (signs in by username or email)" : "No email — sign-in by username only") : "Email: " + u.email;
+  const self = u.id === S.user.uid;
+  $("#ue-setpw").classList.toggle("hidden", self);
+  $("#ue-reset").classList.toggle("hidden", isPlaceholder(u.email) || !u.email);
   $("#user-modal").classList.remove("hidden");
 }
 $("#user-edit-form").addEventListener("submit", async e => {
@@ -836,8 +842,8 @@ $("#user-edit-form").addEventListener("submit", async e => {
     $("#user-modal").classList.add("hidden"); toast("User updated"); }
   catch (err) { toast(friendly(err)); }
 });
+$("#ue-setpw").addEventListener("click", () => adminSetPassword(editingUser));
 $("#ue-reset").addEventListener("click", async () => {
-  if (isPlaceholder(editingUser.email)) return adminSetPassword(editingUser);
   try { await sendPasswordResetEmail(auth, editingUser.email); toast("Reset email sent to " + editingUser.email); }
   catch (err) { toast(friendly(err)); }
 });
@@ -847,20 +853,33 @@ $("#ue-reset").addEventListener("click", async () => {
 // all their data (books, heads, entries, receipts) across; the old login is switched off.
 async function adminSetPassword(u) {
   if (u.id === S.user.uid) { toast("Use the 🔑 button to change your own password"); return; }
-  const nw = prompt(`New password for ${u.name} (${u.username}) — at least 6 characters`);
+  const nw = prompt(`New password for ${u.name} — at least 6 characters`);
   if (!nw) return;
   if (nw.length < 6) { toast("Password must be at least 6 characters"); return; }
+  const realEmail = u.email && !isPlaceholder(u.email) ? u.email.toLowerCase() : "";
+  // Users created with only an email get a username from it
+  let uname = u.username;
+  if (!uname) {
+    const base = (realEmail.split("@")[0] || u.name || "user").toLowerCase().replace(/[^a-z0-9._-]/g, "").slice(0, 20).padEnd(3, "0");
+    uname = base;
+    for (let i = 2; (await getDoc(doc(db, "usernames", uname))).exists(); i++) uname = base + i;
+  }
   let sec;
   try {
     busy(true, "Copying data…");
     const acc = await exportAccount(u.id, true);
     sec = initializeApp(firebaseConfig, "creator-" + Date.now());
     const secAuth = getAuth(sec);
-    const email = `${u.username}.${Date.now().toString(36)}@${LOGIN_DOMAIN}`;
+    const email = `${uname}.${Date.now().toString(36)}@${LOGIN_DOMAIN}`;
     const cred = await createUserWithEmailAndPassword(secAuth, email, nw);
     await signOut(secAuth);
     const nu = cred.user.uid;
-    await setDoc(doc(db, "users", nu), { name: u.name, username: u.username, email, role: u.role || "user", active: true, openingBalance: +u.openingBalance || 0, createdAt: serverTimestamp(), createdBy: S.user.email, replaces: u.id });
+    await setDoc(doc(db, "users", nu), {
+      name: u.name, username: uname, email, role: u.role || "user", active: true, openingBalance: +u.openingBalance || 0,
+      ...(realEmail || u.contactEmail ? { contactEmail: realEmail || u.contactEmail } : {}),
+      aliases: [...new Set([...(u.aliases || []), u.email].filter(Boolean))],
+      createdAt: serverTimestamp(), createdBy: S.user.email, replaces: u.id
+    });
     busy(true, "Moving books & entries…");
     await writeAll(nu, "books", acc.books || [], 400);
     await writeAll(nu, "heads", acc.heads || [], 400);
@@ -871,7 +890,9 @@ async function adminSetPassword(u) {
       await setDoc(doc(db, "users", nu, "receipts", id), revive(rest));
     }
     if (acc.settings) await setDoc(doc(db, "users", nu, "settings", "main"), acc.settings);
-    await setDoc(doc(db, "usernames", u.username), { email, uid: nu });
+    await setDoc(doc(db, "usernames", uname), { email, uid: nu });
+    // their old email keeps working as a sign-in name
+    for (const a of [realEmail, u.contactEmail].filter(Boolean)) await setDoc(doc(db, "usernames", a.toLowerCase()), { email, uid: nu });
     busy(true, "Removing old copy…");
     for (const name of ["receipts", "entries", "heads", "books", "settings"]) {
       const docs = (await getDocs(collection(db, "users", u.id, name))).docs;
@@ -879,7 +900,7 @@ async function adminSetPassword(u) {
     }
     await updateDoc(doc(db, "users", u.id), { active: false, archived: true, replacedBy: nu });
     $("#user-modal").classList.add("hidden");
-    toast(`New password set. ${u.name} signs in with "${u.username}" and the new password.`, 5000);
+    toast(`New password set. ${u.name} signs in with "${uname}"${realEmail ? ` or ${realEmail}` : ""} and the new password.`, 6000);
   } catch (err) { console.error(err); toast("Could not set password: " + friendly(err), 6000); }
   finally { if (sec) deleteApp(sec).catch(() => {}); busy(false); }
 }

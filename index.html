@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#E8641E">
   <title>LLCT Expense</title>
   <link rel="manifest" href="manifest.json">
@@ -219,7 +219,7 @@
 <!-- Entry modal -->
 <div class="modal hidden" id="entry-modal">
   <form class="modal-card" id="entry-form">
-    <div class="row between">
+    <div class="row between sheet-head">
       <h3 id="entry-title" style="margin:0">Add entry</h3>
       <button type="button" class="icon-btn" data-close>✕</button>
     </div>
@@ -247,7 +247,7 @@
       <div id="e-receipts" class="thumbs"></div>
     </div>
     <p class="muted small" id="e-meta"></p>
-    <div class="row between">
+    <div class="row between sheet-foot">
       <button type="button" class="btn danger hidden" id="e-delete">Delete</button>
       <div class="row gap" style="margin-left:auto">
         <button type="button" class="btn" data-close>Cancel</button>

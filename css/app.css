@@ -129,3 +129,17 @@ main{max-width:1100px;margin:0 auto;padding:16px}
   .me{display:none}
   #f-search{width:100%}
 }
+
+/* Phone: entry form is a sheet that always sits above the on-screen keyboard */
+@media (max-width:760px){
+  .modal{position:fixed;left:0;right:0;top:var(--vvt,0px);bottom:auto;height:var(--vvh,100dvh);padding:0;align-items:flex-end;overflow:hidden}
+  .modal-card{margin:0;max-width:none;max-height:100%;border-radius:16px 16px 0 0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:0 14px}
+  .sheet-head{position:sticky;top:0;background:#fff;z-index:2;padding:12px 0 8px;border-bottom:1px solid var(--line)}
+  .sheet-foot{position:sticky;bottom:0;background:#fff;z-index:2;padding:10px 0 max(10px,env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+  #entry-form .form-grid{grid-template-columns:1fr 1fr}
+  #entry-form .form-grid label:first-child{grid-column:1/-1}
+  #e-amount{font-size:1.5rem;font-weight:700;padding:10px 12px}
+  #entry-form input,#entry-form select{font-size:16px}
+  #e-save{padding:12px 22px}
+}
+@media (max-width:760px){ body.sheet-open .fab{display:none} }

@@ -724,5 +724,22 @@ $("#dl-pdf").addEventListener("click", () => {
   pdf.save(fileBase(d) + ".pdf");
 });
 
+/* ---------------- keyboard-aware sheet ---------------- */
+// Keep modals sized to the visible area so the form and Save button stay above the phone keyboard.
+function fitViewport() {
+  const vv = window.visualViewport; if (!vv) return;
+  document.documentElement.style.setProperty("--vvh", vv.height + "px");
+  document.documentElement.style.setProperty("--vvt", vv.offsetTop + "px");
+}
+if (window.visualViewport) {
+  visualViewport.addEventListener("resize", fitViewport);
+  visualViewport.addEventListener("scroll", fitViewport);
+  fitViewport();
+}
+document.addEventListener("focusin", e => {
+  if (!e.target.closest(".modal") || !e.target.matches("input,select,textarea")) return;
+  setTimeout(() => { fitViewport(); e.target.scrollIntoView({ block: "center", behavior: "smooth" }); }, 300);
+});
+
 /* ---------------- PWA ---------------- */
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});

@@ -794,7 +794,7 @@ Set isBill=false and omit other fields if the image is not a bill or receipt.`;
       const res = await model.generateContent([prompt, part]);
       out = JSON.parse(res.response.text());
       break;
-    } catch (err) { lastErr = err; console.warn("AI", name, err); if (!/not found|404|unsupported|model/i.test(String(err))) break; }
+    } catch (err) { lastErr = err; console.warn("AI", name, err); }
   }
   if (openedFor.classList.contains("hidden") || S.editing !== editingAt) return; // form closed meanwhile
   if (!out) {
@@ -802,6 +802,7 @@ Set isBill=false and omit other fields if the image is not a bill or receipt.`;
     setAiStatus(/app.?check|recaptcha|attest/i.test(msg) ? "Couldn't read the bill (security check failed). Fill in manually."
       : /quota|429|exhaust/i.test(msg) ? "Bill reading is busy right now. Fill in manually or try again later."
       : "Couldn't read the bill. Fill in manually.", "warn");
+    $("#ai-status").insertAdjacentHTML("beforeend", `<small class="ai-err">${esc((lastErr?.code ? lastErr.code + ": " : "") + msg).slice(0, 220)}</small>`);
     return;
   }
   if (out.isBill === false) { setAiStatus("This doesn't look like a bill — nothing filled.", "warn"); return; }
@@ -840,7 +841,7 @@ if (window.visualViewport) {
 }
 document.addEventListener("focusin", e => {
   if (!e.target.closest(".modal") || !e.target.matches("input,select,textarea")) return;
-  setTimeout(() => { fitViewport(); e.target.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" }); }, 300);
+  setTimeout(() => { fitViewport(); e.target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" }); }, 300);
 });
 
 /* ---------------- PWA ---------------- */

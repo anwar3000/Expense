@@ -21,4 +21,4 @@ export const WEEK_START = 1;
 // App Check (reCAPTCHA Enterprise key from Google Cloud → Security → Fraud Defense)
 export const RECAPTCHA_KEY = "6LdDhQAuAAAAAF3SKeah_Exi_lfrgj0-pUOpU6Zz";
 // Gemini models for reading bills, tried in order
-export const AI_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash"];
+export const AI_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash"];

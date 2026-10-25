@@ -827,15 +827,22 @@ $("#user-form").addEventListener("submit", async e => {
     // A second Firebase app instance creates the login without signing the admin out.
     sec = initializeApp(firebaseConfig, "creator-" + Date.now());
     const secAuth = getAuth(sec);
-    const cred = await createUserWithEmailAndPassword(secAuth, email, pass);
+    let cred, loginEmail = email;
+    try { cred = await createUserWithEmailAndPassword(secAuth, email, pass); }
+    catch (err) {
+      if (!realEmail && /email-already-in-use/.test(err.code || "")) {
+        loginEmail = `${username}.${Date.now().toString(36)}@${LOGIN_DOMAIN}`;
+        cred = await createUserWithEmailAndPassword(secAuth, loginEmail, pass);
+      } else throw err;
+    }
     await signOut(secAuth);
     const uid = cred.user.uid;
     await setDoc(doc(db, "users", uid), {
-      name, username, email, role: $("#u-role").value, active: true,
+      name, username, email: loginEmail, role: $("#u-role").value, active: true,
       openingBalance: parseFloat($("#u-opening").value) || 0,
       createdAt: serverTimestamp(), createdBy: S.user.email
     });
-    await setDoc(doc(db, "usernames", username), { email, uid });
+    await setDoc(doc(db, "usernames", username), { email: loginEmail, uid });
     await setDoc(doc(db, "users", uid, "books", "main"), { name: "Cash book", currency: $("#u-cur").value, openingBalance: parseFloat($("#u-opening").value) || 0, order: 0, createdAt: serverTimestamp() });
     await seedHeads(uid);
     m.className = "msg ok"; m.textContent = `Created ${name}. Username: ${username} · Password: ${pass}`;
@@ -853,6 +860,7 @@ function openUserEdit(id) {
   $("#ue-email").textContent = isPlaceholder(u.email) ? (u.contactEmail ? "Email: " + u.contactEmail + " (signs in by username or email)" : "No email — sign-in by username only") : "Email: " + u.email;
   const self = u.id === S.user.uid;
   $("#ue-setpw").classList.toggle("hidden", self);
+  $("#ue-delete").closest(".danger-zone").classList.toggle("hidden", self || (u.email || "").toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase());
   $("#ue-reset").classList.toggle("hidden", isPlaceholder(u.email) || !u.email);
   $("#user-modal").classList.remove("hidden");
 }
@@ -878,6 +886,34 @@ $("#user-edit-form").addEventListener("submit", async e => {
   catch (err) { toast(friendly(err)); }
 });
 $("#ue-setpw").addEventListener("click", () => adminSetPassword(editingUser));
+$("#ue-delete").addEventListener("click", async () => {
+  const u = editingUser; if (!u) return;
+  const n = S.allEntries.filter(e => e.uid === u.id).length;
+  const v = await uiDialog({
+    title: `Delete ${u.name}?`,
+    message: `This permanently removes ${u.name}${u.username ? ` (@${u.username})` : ""}, their books, ${n} entries and all receipts. This cannot be undone.\n\nTip: Reports → Backup → Export first if you may need the data.\n\nType DELETE to confirm.`,
+    fields: [{ label: "Type DELETE", type: "text" }], ok: "Delete user", danger: true
+  });
+  if (!v) return;
+  if (v[0].trim().toUpperCase() !== "DELETE") { toast("Not deleted — you didn't type DELETE"); return; }
+  if (S.viewUid === u.id) switchAccount(S.user.uid); // stop watching their books first
+  try {
+    for (const name of ["receipts", "entries", "heads", "books", "settings"]) {
+      busy(true, `Deleting ${name}…`);
+      const docs = (await getDocs(collection(db, "users", u.id, name))).docs;
+      for (let i = 0; i < docs.length; i += 400) { const b = writeBatch(db); docs.slice(i, i + 400).forEach(d => b.delete(d.ref)); await b.commit(); }
+    }
+    busy(true, "Removing login…");
+    for (const key of [u.username, u.contactEmail, ...(u.aliases || []), u.email].filter(Boolean).map(x => x.toLowerCase())) {
+      try { const m = await getDoc(doc(db, "usernames", key)); if (m.exists() && (!m.data().uid || m.data().uid === u.id)) await deleteDoc(doc(db, "usernames", key)); } catch {}
+    }
+    await deleteDoc(doc(db, "users", u.id));
+    delete S.booksMap[u.id];
+    $("#user-modal").classList.add("hidden");
+    toast(`${u.name} deleted`);
+  } catch (err) { console.error(err); toast("Delete stopped: " + friendly(err), 6000); }
+  finally { busy(false); }
+});
 $("#ue-reset").addEventListener("click", async () => {
   try { await sendPasswordResetEmail(auth, editingUser.email); toast("Reset email sent to " + editingUser.email); }
   catch (err) { toast(friendly(err)); }

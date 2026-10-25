@@ -138,6 +138,30 @@ else onAuthStateChanged(auth, async u => {
   } finally { busy(false); }
 });
 
+
+/* ---------------- in-app dialogs (phone browsers and installed apps may block pop-ups) ---------------- */
+function uiDialog({ title, message = "", fields = [], ok = "OK", danger = false }) {
+  return new Promise(resolve => {
+    const wrap = document.createElement("div");
+    wrap.className = "modal ui-dialog";
+    wrap.innerHTML = `<form class="modal-card dlg-card">
+      <h3 style="margin:0">${esc(title)}</h3>
+      ${message ? `<p class="dlg-msg">${esc(message)}</p>` : ""}
+      ${fields.map((f, i) => `<label>${esc(f.label)}<input data-i="${i}" type="${f.type || "text"}" ${f.min ? `minlength="${f.min}"` : ""} required autocomplete="${f.type === "password" ? "new-password" : "off"}" autocapitalize="none"></label>`).join("")}
+      <div class="row gap" style="justify-content:flex-end">
+        <button type="button" class="btn" data-cancel>Cancel</button>
+        <button type="submit" class="btn ${danger ? "danger-fill" : "primary"}">${esc(ok)}</button>
+      </div></form>`;
+    document.body.appendChild(wrap);
+    const done = v => { wrap.remove(); resolve(v); };
+    wrap.querySelector("[data-cancel]").onclick = () => done(null);
+    wrap.addEventListener("click", e => { if (e.target === wrap) done(null); });
+    wrap.querySelector("form").onsubmit = e => { e.preventDefault(); done(fields.length ? [...wrap.querySelectorAll("input")].map(i => i.value) : true); };
+    setTimeout(() => (wrap.querySelector("input") || wrap.querySelector("[type=submit]")).focus(), 50);
+  });
+}
+const uiConfirm = (message, ok = "Yes", danger = true) => uiDialog({ title: "Please confirm", message, ok, danger });
+
 /* ---------------- usernames ---------------- */
 // Users without an email sign in with a username; Firebase gets a private placeholder address.
 const LOGIN_DOMAIN = "users." + firebaseConfig.authDomain;
@@ -180,8 +204,8 @@ $("#forgot-btn").addEventListener("click", async () => {
 });
 $("#logout-btn").addEventListener("click", () => signOut(auth));
 $("#pw-btn").addEventListener("click", async () => {
-  const cur = prompt("Current password"); if (!cur) return;
-  const nw = prompt("New password (at least 6 characters)"); if (!nw) return;
+  const v = await uiDialog({ title: "Change your password", fields: [{ label: "Current password", type: "password" }, { label: "New password (min 6)", type: "password", min: 6 }], ok: "Change" });
+  if (!v) return; const [cur, nw] = v;
   if (nw.length < 6) { toast("Password must be at least 6 characters"); return; }
   try {
     await reauthenticateWithCredential(auth.currentUser, EmailAuthProvider.credential(auth.currentUser.email, cur));
@@ -312,7 +336,7 @@ $("#books-list").addEventListener("click", async e => {
   const n = S.rawEntries.filter(x => bookOf(x) === id).length;
   if (S.books.length === 1) { toast("You need at least one book"); return; }
   if (n) { toast(`"${b.name}" has ${n} entries — delete them first`, 3500); return; }
-  if (!confirm(`Delete book "${b.name}"?`)) return;
+  if (!(await uiConfirm(`Delete book "${b.name}"?`, "Delete"))) return;
   try { if (S.bookId === id) S.bookId = null; await deleteDoc(doc(db, "users", S.viewUid, "books", id)); applyBook(); toast("Book deleted"); }
   catch (err) { toast(friendly(err)); }
 });
@@ -663,7 +687,7 @@ $("#entry-form").addEventListener("submit", async e => {
 
 $("#e-delete").addEventListener("click", async () => {
   const ed = S.editing; if (!ed) return;
-  if (!confirm(ed.transfer ? `Delete this transfer of ${money(ed.amount)}? It is removed from both books.` : `Delete this ${ed.type} of ${money(ed.amount)}? This cannot be undone.`)) return;
+  if (!(await uiConfirm(ed.transfer ? `Delete this transfer of ${money(ed.amount)}? It is removed from both books.` : `Delete this ${ed.type} of ${money(ed.amount)}? This cannot be undone.`, "Delete"))) return;
   busy(true);
   try {
     const s = await getDocs(query(collection(db, "users", S.viewUid, "receipts"), where("entryId", "==", ed.id)));
@@ -714,7 +738,7 @@ $("#head-form").addEventListener("submit", async e => {
     const id = e.target.closest(".head-item").dataset.id;
     const h = S.heads.find(x => x.id === id);
     const used = S.rawEntries.filter(x => x.headId === id).length;
-    if (!confirm(`Delete head "${h.name}"?` + (used ? `\n${used} entries keep the name "${h.name}".` : ""))) return;
+    if (!(await uiConfirm(`Delete head "${h.name}"?` + (used ? ` ${used} entries keep the name "${h.name}".` : ""), "Delete"))) return;
     try { await deleteDoc(doc(db, "users", S.viewUid, "heads", id)); toast("Head deleted"); } catch (err) { toast(friendly(err)); }
   });
 });
@@ -853,8 +877,8 @@ $("#ue-reset").addEventListener("click", async () => {
 // all their data (books, heads, entries, receipts) across; the old login is switched off.
 async function adminSetPassword(u) {
   if (u.id === S.user.uid) { toast("Use the 🔑 button to change your own password"); return; }
-  const nw = prompt(`New password for ${u.name} — at least 6 characters`);
-  if (!nw) return;
+  const v = await uiDialog({ title: `New password for ${u.name}`, message: "They sign in with their username" + (u.username ? ` (${u.username})` : "") + " and this password.", fields: [{ label: "New password (min 6)", type: "text", min: 6 }], ok: "Set password" });
+  if (!v) return; const nw = v[0].trim();
   if (nw.length < 6) { toast("Password must be at least 6 characters"); return; }
   const realEmail = u.email && !isPlaceholder(u.email) ? u.email.toLowerCase() : "";
   // Users created with only an email get a username from it
@@ -1152,7 +1176,7 @@ $("#bk-file").addEventListener("change", async e => {
     const target = p.uid === S.viewUid ? (S.viewProfile?.name || "this account") : userName(p.uid);
     return `• ${p.acc.profile?.name || p.acc.uid} → ${target}: ${p.acc.books?.length || 1} books, ${p.acc.heads?.length || 0} heads, ${p.acc.entries?.length || 0} entries, ${p.acc.receipts?.length || 0} receipts`;
   });
-  if (!confirm(`Restore this backup (${new Date(data.exportedAt).toLocaleString("en-GB")})?\n\n${lines.join("\n")}${skipped ? `\n\n${skipped} account(s) in the file have no matching user and will be skipped.` : ""}\n\nEntries with the same ID are updated; nothing is duplicated.`)) return;
+  if (!(await uiConfirm(`Restore this backup (${new Date(data.exportedAt).toLocaleString("en-GB")})?\n\n${lines.join("\n")}${skipped ? `\n\n${skipped} account(s) in the file have no matching user and will be skipped.` : ""}\n\nEntries with the same ID are updated; nothing is duplicated.`, "Restore", false))) return;
 
   try {
     for (let i = 0; i < plan.length; i++) {

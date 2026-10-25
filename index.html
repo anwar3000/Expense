@@ -64,6 +64,11 @@
     </div>
   </header>
 
+  <div class="bookbar">
+    <div class="who"><span class="who-ico">👤</span><b id="who-name"></b></div>
+    <div class="book-pills" id="book-pills"></div>
+  </div>
+
   <div id="viewing-banner" class="banner hidden">
     Viewing account: <b id="viewing-name"></b>
     <button class="btn small" id="back-to-mine">Back to my account</button>
@@ -71,7 +76,7 @@
 
   <nav class="tabs">
     <button data-tab="home" class="active">Home</button>
-    <button data-tab="heads">Account heads</button>
+    <button data-tab="heads">Books &amp; heads</button>
     <button data-tab="reports">Reports</button>
     <button data-tab="users" class="admin-only hidden">Users</button>
   </nav>
@@ -125,6 +130,17 @@
     <!-- HEADS -->
     <div id="tab-heads" class="tab hidden">
       <div class="card">
+        <h3>Cash books</h3>
+        <p class="muted small" style="margin-top:-4px">Each book has its own balance, currency and opening balance. Account heads are shared by all books.</p>
+        <div id="books-list"></div>
+        <form id="book-form" class="row gap wrap" style="margin-top:10px">
+          <input id="book-name" placeholder="New book (e.g. Bank book, Petty cash)" required style="flex:1;min-width:180px">
+          <select id="book-cur"></select>
+          <input id="book-open" type="number" step="0.01" placeholder="Opening" style="width:110px">
+          <button class="btn primary" type="submit">Add book</button>
+        </form>
+      </div>
+      <div class="card">
         <h3>Add account head</h3>
         <form id="head-form" class="row gap wrap">
           <input id="head-name" placeholder="Head name (e.g. Fuel)" required>
@@ -135,15 +151,6 @@
       <div class="two-col">
         <div class="card"><h3>Income heads</h3><div id="heads-income"></div></div>
         <div class="card"><h3>Expense heads</h3><div id="heads-expense"></div></div>
-      </div>
-      <div class="card">
-        <h3>Account settings</h3>
-        <label>Currency<select id="cur-select"></select></label>
-        <p class="muted small" style="margin:6px 0">Opening balance — amount in hand before the first entry. Added to the current balance.</p>
-        <form id="opening-form" class="row gap">
-          <input type="number" step="0.01" id="opening-input">
-          <button class="btn" type="submit">Save</button>
-        </form>
       </div>
     </div>
 
@@ -170,6 +177,9 @@
           <label class="r-custom hidden">To<input type="date" id="r-to"></label>
           <label>Type
             <select id="r-type"><option value="">Income &amp; expense</option><option value="income">Income only</option><option value="expense">Expense only</option></select>
+          </label>
+          <label id="r-book-wrap">Book
+            <select id="r-book"><option value="">All books</option></select>
           </label>
           <label>Account head
             <select id="r-head"><option value="">All heads</option></select>
@@ -208,7 +218,7 @@
           <label>Email<input id="u-email" type="email" required></label>
           <label>Password<input id="u-pass" type="text" minlength="6" required placeholder="min 6 characters"></label>
           <label>Role<select id="u-role"><option value="user">User</option><option value="admin">Admin</option></select></label>
-          <label>Currency<select id="u-cur"></select></label>
+          <label>Currency (first book)<select id="u-cur"></select></label>
           <label>Opening balance<input id="u-opening" type="number" step="0.01" value="0"></label>
           <div class="form-actions"><button class="btn primary" type="submit">Create user</button></div>
         </form>
@@ -244,6 +254,7 @@
       <div class="seg" id="entry-type">
         <button type="button" data-type="expense" class="active exp">Expense</button>
         <button type="button" data-type="income" class="inc">Income</button>
+        <button type="button" data-type="transfer" class="trf">Transfer</button>
       </div>
       <label class="icon-sq" title="Photo of bill">📷<span>Bill</span>
         <input type="file" id="e-camera" accept="image/*" capture="environment" hidden>
@@ -259,7 +270,8 @@
     </div>
     <div class="entry-grid">
       <label>Date<input type="date" id="e-date" required></label>
-      <label>Account head<select id="e-head" required></select></label>
+      <label><span id="e-head-label">Account head</span><select id="e-head" required></select></label>
+      <label id="e-recv-wrap" class="hidden">Received in other book (<span id="e-recv-cur"></span>)<input type="number" step="0.01" min="0.01" id="e-recv" inputmode="decimal"></label>
       <label>Payment mode
         <select id="e-mode"><option>Cash</option><option>Bank transfer</option><option>Card</option><option>Cheque</option><option>Other</option></select>
       </label>
@@ -292,8 +304,6 @@
     <div class="form-grid">
       <label>Full name<input id="ue-name" required></label>
       <label>Role<select id="ue-role"><option value="user">User</option><option value="admin">Admin</option></select></label>
-      <label>Currency<select id="ue-cur"></select></label>
-      <label>Opening balance<input id="ue-opening" type="number" step="0.01"></label>
       <label>Status<select id="ue-active"><option value="true">Active</option><option value="false">Disabled</option></select></label>
     </div>
     <p class="muted small" id="ue-email"></p>

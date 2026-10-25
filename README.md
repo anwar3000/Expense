@@ -9,7 +9,9 @@ Web app (installable on phones) for staff to record income and expenses with rec
 - Income and expense entries: amount, date, account head, payment mode, description, reference, receipts (photos or PDFs).
 - Every entry can be edited or deleted at any time; each edit is stamped with who and when.
 - Account heads per user (income and expense), with rename and delete. Default heads are added for every new user.
-- Opening balance per user.
+- Multiple cash books per user (Cash book, Bank book, Petty cash…) — each with its own balance, currency and opening balance; book switcher with the user's name at the top; transfers between books (with received amount when currencies differ).
+- GPS location on every new entry; bill photos read by Gemini to fill empty fields.
+- Full-data backup export and restore.
 - Reports for any period/type/head: Excel (Summary, Entries with running balance, By head, Daily, By user), PDF, CSV. Opening b/f and closing balance included.
 - Admin: create users (name, email, password, role, opening balance), edit, disable, send password reset, open any user's account to view or correct entries, all-users table with month totals and balances, combined "All users" report.
 

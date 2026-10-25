@@ -324,7 +324,7 @@ function renderThumbs() {
     <div class="thumb" data-kind="${r.kind}" data-key="${r.kind === "old" ? r.id : r.idx}">
       ${r.mime.startsWith("image/") ? `<img src="${r.data}" alt="">` : `📄<br>${esc(r.name).slice(0, 18)}`}
       <button type="button" class="x" title="Remove">✕</button></div>`).join("")
-    : `<span class="muted small">No receipts attached.</span>`;
+    : "";
 }
 $("#e-receipts").addEventListener("click", e => {
   const t = e.target.closest(".thumb"); if (!t) return;
@@ -354,7 +354,7 @@ function dataUrlToBlob(d) {
   return new Blob([arr], { type: mime });
 }
 
-$("#e-files").addEventListener("change", async e => {
+["#e-files", "#e-camera"].forEach(sel => $(sel).addEventListener("change", async e => {
   const files = [...e.target.files]; e.target.value = "";
   busy(true);
   for (const f of files) {
@@ -362,7 +362,7 @@ $("#e-files").addEventListener("change", async e => {
     catch (err) { toast(`${f.name}: ${err.message}`, 4000); }
   }
   busy(false); renderThumbs();
-});
+}));
 
 const readDataUrl = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
 const loadImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("Can't read this image format")); i.src = src; });

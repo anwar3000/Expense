@@ -130,16 +130,31 @@ main{max-width:1100px;margin:0 auto;padding:16px}
   #f-search{width:100%}
 }
 
-/* Phone: entry form is a sheet that always sits above the on-screen keyboard */
-@media (max-width:760px){
-  .modal{position:fixed;left:0;right:0;top:var(--vvt,0px);bottom:auto;height:var(--vvh,100dvh);padding:0;align-items:flex-end;overflow:hidden}
-  .modal-card{margin:0;max-width:none;max-height:100%;border-radius:16px 16px 0 0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:0 14px}
+/* Entry form layout (all sizes) */
+.receipts{padding:8px}
+.rec-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.rec-btn{justify-content:center;padding:12px 8px;background:#fff7f1;border-color:#f7c9ad;color:var(--orange-d)}
+.thumbs:empty{display:none}
+.entry-grid{grid-template-columns:1fr 1fr}
+.entry-grid .amt{grid-column:1/-1}
+#e-amount{font-size:1.5rem;font-weight:700;padding:10px 12px}
+#entry-modal .modal-card{max-width:560px}
+
+/* Phones, foldables and tablets: sheet that always sits above the on-screen keyboard */
+@media (max-width:760px), (pointer:coarse){
+  .modal{position:fixed;left:0;right:0;top:var(--vvt,0px);bottom:auto;height:var(--vvh,100dvh);padding:0;align-items:flex-end;justify-content:center;overflow:hidden}
+  .modal-card{margin:0 auto;max-height:100%;border-radius:16px 16px 0 0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:0 14px}
+  .modal-card:not(.wide){max-width:600px}
   .sheet-head{position:sticky;top:0;background:#fff;z-index:2;padding:12px 0 8px;border-bottom:1px solid var(--line)}
   .sheet-foot{position:sticky;bottom:0;background:#fff;z-index:2;padding:10px 0 max(10px,env(safe-area-inset-bottom));border-top:1px solid var(--line)}
-  #entry-form .form-grid{grid-template-columns:1fr 1fr}
-  #entry-form .form-grid label:first-child{grid-column:1/-1}
-  #e-amount{font-size:1.5rem;font-weight:700;padding:10px 12px}
   #entry-form input,#entry-form select{font-size:16px}
   #e-save{padding:12px 22px}
 }
-@media (max-width:760px){ body.sheet-open .fab{display:none} }
+/* Wide touch screens (Fold open, tablets): centred card instead of edge-to-edge */
+@media (min-width:761px) and (pointer:coarse){
+  .modal{align-items:center;padding:12px}
+  .modal-card{border-radius:16px;max-height:calc(100% - 8px)}
+  main{max-width:900px}
+}
+
+#e-meta:empty{display:none}

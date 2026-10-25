@@ -227,26 +227,28 @@
       <button type="button" data-type="expense" class="active exp">Expense</button>
       <button type="button" data-type="income" class="inc">Income</button>
     </div>
-    <div class="form-grid">
-      <label>Amount (AED)<input type="number" step="0.01" min="0.01" id="e-amount" required inputmode="decimal"></label>
-      <label>Date<input type="date" id="e-date" required></label>
-      <label>Account head<select id="e-head" required></select></label>
-      <label>Payment mode
-        <select id="e-mode"><option>Cash</option><option>Bank transfer</option><option>Card</option><option>Cheque</option><option>Other</option></select>
-      </label>
-      <label class="full">Description<input id="e-note" placeholder="What was it for?"></label>
-      <label class="full">Reference / bill no.<input id="e-ref"></label>
-    </div>
     <div class="receipts">
-      <div class="row between">
-        <b>Receipts</b>
-        <label class="btn small">📎 Add / 📷 Photo
+      <div class="rec-btns">
+        <label class="btn rec-btn">📷 Photo of bill
+          <input type="file" id="e-camera" accept="image/*" capture="environment" hidden>
+        </label>
+        <label class="btn rec-btn">📎 Gallery / PDF
           <input type="file" id="e-files" accept="image/*,application/pdf" multiple hidden>
         </label>
       </div>
       <div id="e-receipts" class="thumbs"></div>
     </div>
-    <p class="muted small" id="e-meta"></p>
+    <div class="form-grid entry-grid">
+      <label class="amt">Amount (AED)<input type="number" step="0.01" min="0.01" id="e-amount" required inputmode="decimal"></label>
+      <label>Date<input type="date" id="e-date" required></label>
+      <label>Account head<select id="e-head" required></select></label>
+      <label>Payment mode
+        <select id="e-mode"><option>Cash</option><option>Bank transfer</option><option>Card</option><option>Cheque</option><option>Other</option></select>
+      </label>
+      <label>Bill / ref no.<input id="e-ref"></label>
+      <label class="full">Description<input id="e-note" placeholder="What was it for?"></label>
+    </div>
+    <p class="muted small" id="e-meta" style="margin:0"></p>
     <div class="row between sheet-foot">
       <button type="button" class="btn danger hidden" id="e-delete">Delete</button>
       <div class="row gap" style="margin-left:auto">

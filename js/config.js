@@ -14,7 +14,8 @@ export const firebaseConfig = {
 // Must match the email in firestore.rules (function isSuper).
 export const SUPER_ADMIN_EMAIL = "anwar@llct.net";
 
-export const CURRENCY = "AED";
+// Default currency for new accounts (each account can change it in Account heads → Account settings)
+export const DEFAULT_CURRENCY = "INR";
 // 1 = weeks start Monday, 0 = Sunday, 6 = Saturday
 export const WEEK_START = 1;
 

@@ -137,8 +137,9 @@
         <div class="card"><h3>Expense heads</h3><div id="heads-expense"></div></div>
       </div>
       <div class="card">
-        <h3>Opening balance</h3>
-        <p class="muted small">Amount in hand before the first entry. Added to the current balance.</p>
+        <h3>Account settings</h3>
+        <label>Currency<select id="cur-select"></select></label>
+        <p class="muted small" style="margin:6px 0">Opening balance — amount in hand before the first entry. Added to the current balance.</p>
         <form id="opening-form" class="row gap">
           <input type="number" step="0.01" id="opening-input">
           <button class="btn" type="submit">Save</button>
@@ -207,6 +208,7 @@
           <label>Email<input id="u-email" type="email" required></label>
           <label>Password<input id="u-pass" type="text" minlength="6" required placeholder="min 6 characters"></label>
           <label>Role<select id="u-role"><option value="user">User</option><option value="admin">Admin</option></select></label>
+          <label>Currency<select id="u-cur"></select></label>
           <label>Opening balance<input id="u-opening" type="number" step="0.01" value="0"></label>
           <div class="form-actions"><button class="btn primary" type="submit">Create user</button></div>
         </form>
@@ -252,7 +254,7 @@
     </div>
     <div id="ai-status" class="ai-status hidden"></div>
     <div class="amt-row">
-      <span class="cur">AED</span>
+      <span class="cur" id="e-cur">₹</span>
       <input type="number" step="0.01" min="0.01" id="e-amount" required inputmode="decimal" placeholder="0.00" aria-label="Amount">
     </div>
     <div class="entry-grid">
@@ -290,6 +292,7 @@
     <div class="form-grid">
       <label>Full name<input id="ue-name" required></label>
       <label>Role<select id="ue-role"><option value="user">User</option><option value="admin">Admin</option></select></label>
+      <label>Currency<select id="ue-cur"></select></label>
       <label>Opening balance<input id="ue-opening" type="number" step="0.01"></label>
       <label>Status<select id="ue-active"><option value="true">Active</option><option value="false">Disabled</option></select></label>
     </div>

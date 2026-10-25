@@ -8,13 +8,25 @@ import {
   collection, collectionGroup, query, where, orderBy, onSnapshot, writeBatch, serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js";
-import { firebaseConfig, SUPER_ADMIN_EMAIL, CURRENCY, WEEK_START, RECAPTCHA_KEY, AI_MODELS } from "./config.js";
+import { firebaseConfig, SUPER_ADMIN_EMAIL, DEFAULT_CURRENCY, WEEK_START, RECAPTCHA_KEY, AI_MODELS } from "./config.js";
 
 /* ---------------- helpers ---------------- */
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const money = n => (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Currencies: code → symbol shown on screen (PDF uses the code) and number grouping style
+const CURRENCIES = {
+  INR: { sym: "₹", name: "Indian Rupee", loc: "en-IN" }, AED: { sym: "AED", name: "UAE Dirham" }, USD: { sym: "$", name: "US Dollar" },
+  EUR: { sym: "€", name: "Euro" }, GBP: { sym: "£", name: "British Pound" }, SAR: { sym: "SAR", name: "Saudi Riyal" },
+  QAR: { sym: "QAR", name: "Qatari Riyal" }, OMR: { sym: "OMR", name: "Omani Rial" }, KWD: { sym: "KWD", name: "Kuwaiti Dinar" },
+  BHD: { sym: "BHD", name: "Bahraini Dinar" }, PKR: { sym: "PKR", name: "Pakistani Rupee" }, LKR: { sym: "LKR", name: "Sri Lankan Rupee" },
+  BDT: { sym: "৳", name: "Bangladeshi Taka" }, NPR: { sym: "NPR", name: "Nepalese Rupee" }, PHP: { sym: "₱", name: "Philippine Peso" }
+};
+let CUR = DEFAULT_CURRENCY; // currency of the account on screen
+const curInfo = c => CURRENCIES[c] || { sym: c, loc: "en-US" };
+const money = (n, c = CUR) => (Number(n) || 0).toLocaleString(curInfo(c).loc || "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const sym = (c = CUR) => curInfo(c).sym;
+const curOptions = () => Object.entries(CURRENCIES).map(([k, v]) => `<option value="${k}">${k} – ${v.name}</option>`).join("");
 const pad = n => String(n).padStart(2, "0");
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const parseYmd = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
@@ -75,7 +87,7 @@ const S = {
   user: null, profile: null,
   viewUid: null, viewProfile: null,
   heads: [], entries: [],
-  users: [], allEntries: [],
+  users: [], allEntries: [], curMap: {},
   range: "month", from: "", to: "",
   entryType: "expense", editing: null,
   newReceipts: [], oldReceipts: [], removedReceipts: [],
@@ -167,6 +179,11 @@ function switchAccount(uid) {
     $("#opening-input").value = S.viewProfile.openingBalance || 0;
     renderHome();
   }));
+  S.subs.push(onSnapshot(doc(db, "users", uid, "settings", "main"), s => {
+    CUR = s.data()?.currency || DEFAULT_CURRENCY; S.curMap[uid] = CUR;
+    $("#cur-select").value = CUR; $("#e-cur").textContent = sym();
+    renderHome(); renderReportPreview(); if (isAdmin()) renderUsers();
+  }, () => {}));
   S.subs.push(onSnapshot(query(collection(db, "users", uid, "heads"), orderBy("name")), s => {
     S.heads = s.docs.map(d => ({ id: d.id, ...d.data() }));
     renderHeads(); fillHeadFilters(); renderHome();
@@ -212,7 +229,7 @@ function renderHome() {
   const opening = +(S.viewProfile?.openingBalance || 0);
   const all = sums(E);
   const bal = opening + all.net;
-  $("#bal-total").textContent = `${CURRENCY} ${money(bal)}`;
+  $("#bal-total").textContent = `${sym()} ${money(bal)}`;
   $("#bal-total").classList.toggle("neg", bal < 0);
   $("#bal-sub").textContent = `Total in ${money(all.inc)} · Total out ${money(all.exp)}` + (opening ? ` · Opening ${money(opening)}` : "");
 
@@ -523,6 +540,12 @@ $("#head-form").addEventListener("submit", async e => {
     try { await deleteDoc(doc(db, "users", S.viewUid, "heads", id)); toast("Head deleted"); } catch (err) { toast(friendly(err)); }
   });
 });
+$("#cur-select").innerHTML = curOptions(); $("#u-cur").innerHTML = curOptions(); $("#ue-cur").innerHTML = curOptions();
+$("#u-cur").value = DEFAULT_CURRENCY;
+$("#cur-select").addEventListener("change", async e => {
+  try { await setDoc(doc(db, "users", S.viewUid, "settings", "main"), { currency: e.target.value }, { merge: true }); toast("Currency set to " + e.target.value); }
+  catch (err) { toast(friendly(err)); }
+});
 $("#opening-form").addEventListener("submit", async e => {
   e.preventDefault();
   try { await updateDoc(doc(db, "users", S.viewUid), { openingBalance: parseFloat($("#opening-input").value) || 0 }); toast("Opening balance saved"); }
@@ -534,6 +557,10 @@ function startAdmin() {
   S.adminSubs.push(onSnapshot(query(collection(db, "users"), orderBy("name")), s => {
     S.users = s.docs.map(d => ({ id: d.id, ...d.data() }));
     renderUsers(); fillReportScope();
+    Promise.all(S.users.map(async u => {
+      try { S.curMap[u.id] = (await getDoc(doc(db, "users", u.id, "settings", "main"))).data()?.currency || DEFAULT_CURRENCY; }
+      catch { S.curMap[u.id] = DEFAULT_CURRENCY; }
+    })).then(() => { renderUsers(); renderReportPreview(); });
   }, err => toast(friendly(err))));
   S.adminSubs.push(onSnapshot(collectionGroup(db, "entries"), s => {
     S.allEntries = s.docs.map(d => ({ id: d.id, uid: d.ref.parent.parent.id, ...d.data() }));
@@ -541,6 +568,7 @@ function startAdmin() {
   }, err => console.warn("all-entries", err)));
 }
 
+const curOf = uid => S.curMap[uid] || DEFAULT_CURRENCY;
 function renderUsers() {
   const month = rangeFor("month");
   let tIn = 0, tOut = 0, tBal = 0;
@@ -551,11 +579,16 @@ function renderUsers() {
     tIn += m.inc; tOut += m.exp; tBal += bal;
     return `<tr data-id="${u.id}"><td><b>${esc(u.name)}</b><br><span class="muted small">${esc(u.email)}</span></td>
       <td>${u.role === "admin" ? "Admin" : "User"}</td>
-      <td class="num inc">${money(m.inc)}</td><td class="num exp">${money(m.exp)}</td>
-      <td class="num"><b class="${bal < 0 ? "exp" : ""}">${money(bal)}</b></td>
+      <td class="num inc">${money(m.inc, curOf(u.id))}</td><td class="num exp">${money(m.exp, curOf(u.id))}</td>
+      <td class="num"><b class="${bal < 0 ? "exp" : ""}">${sym(curOf(u.id))} ${money(bal, curOf(u.id))}</b></td>
       <td><span class="tag ${u.active === false ? "off" : "on"}">${u.active === false ? "Disabled" : "Active"}</span></td>
       <td><button class="btn small open">Open</button> <button class="btn small edit">Edit</button></td></tr>`;
-  }).join("") + `<tr><td><b>Total</b></td><td></td><td class="num inc"><b>${money(tIn)}</b></td><td class="num exp"><b>${money(tOut)}</b></td><td class="num"><b>${money(tBal)}</b></td><td></td><td></td></tr>`;
+  }).join("") + (() => {
+    const curs = new Set(S.users.map(u => curOf(u.id)));
+    if (curs.size > 1) return `<tr><td colspan="7" class="muted small">Users have different currencies — no combined total.</td></tr>`;
+    const c = [...curs][0];
+    return `<tr><td><b>Total</b></td><td></td><td class="num inc"><b>${money(tIn, c)}</b></td><td class="num exp"><b>${money(tOut, c)}</b></td><td class="num"><b>${sym(c)} ${money(tBal, c)}</b></td><td></td><td></td></tr>`;
+  })();
   $("#users-total").textContent = `${S.users.length} users`;
 }
 $("#users-table").addEventListener("click", e => {
@@ -586,9 +619,11 @@ $("#user-form").addEventListener("submit", async e => {
       openingBalance: parseFloat($("#u-opening").value) || 0,
       createdAt: serverTimestamp(), createdBy: S.user.email
     });
+    await setDoc(doc(db, "users", uid, "settings", "main"), { currency: $("#u-cur").value });
+    S.curMap[uid] = $("#u-cur").value;
     await seedHeads(uid);
     m.className = "msg ok"; m.textContent = `Created ${name}. Login: ${email} / the password you set.`;
-    e.target.reset(); $("#u-opening").value = 0;
+    e.target.reset(); $("#u-opening").value = 0; $("#u-cur").value = DEFAULT_CURRENCY;
   } catch (err) { m.className = "msg err"; m.textContent = friendly(err); }
   finally { if (sec) deleteApp(sec).catch(() => {}); busy(false); }
 });
@@ -598,7 +633,7 @@ function openUserEdit(id) {
   const u = S.users.find(x => x.id === id); editingUser = u;
   $("#ue-name").value = u.name || ""; $("#ue-role").value = u.role || "user";
   $("#ue-opening").value = u.openingBalance || 0; $("#ue-active").value = String(u.active !== false);
-  $("#ue-email").textContent = u.email;
+  $("#ue-email").textContent = u.email; $("#ue-cur").value = curOf(u.id);
   $("#user-modal").classList.remove("hidden");
 }
 $("#user-edit-form").addEventListener("submit", async e => {
@@ -606,7 +641,11 @@ $("#user-edit-form").addEventListener("submit", async e => {
   const u = editingUser, self = u.id === S.user.uid;
   const upd = { name: $("#ue-name").value.trim(), role: $("#ue-role").value, openingBalance: parseFloat($("#ue-opening").value) || 0, active: $("#ue-active").value === "true" };
   if (self && (upd.role !== "admin" || !upd.active)) { toast("You can't remove your own admin access"); return; }
-  try { await updateDoc(doc(db, "users", u.id), upd); $("#user-modal").classList.add("hidden"); toast("User updated"); }
+  try {
+    await updateDoc(doc(db, "users", u.id), upd);
+    await setDoc(doc(db, "users", u.id, "settings", "main"), { currency: $("#ue-cur").value }, { merge: true });
+    S.curMap[u.id] = $("#ue-cur").value; renderUsers();
+    $("#user-modal").classList.add("hidden"); toast("User updated"); }
   catch (err) { toast(friendly(err)); }
 });
 $("#ue-reset").addEventListener("click", async () => {
@@ -648,7 +687,9 @@ function reportData() {
   const bf = opening + sums(before).net;
   const s = sums(rows);
   const heads = [...new Set(base.map(e => e.headName).filter(Boolean))].sort();
-  return { scope, base, rows, r, s, bf, closing: bf + sums(base.filter(e => inRange(e, r))).net, title, type, head, heads, filtered: !!(type || head) };
+  const cur = scope === "__all" ? ([...new Set(S.users.map(u => curOf(u.id)))].length === 1 ? curOf(S.users[0]?.id) : "MIXED")
+    : (scope === "__view" ? CUR : curOf(scope));
+  return { cur, scope, base, rows, r, s, bf, closing: bf + sums(base.filter(e => inRange(e, r))).net, title, type, head, heads, filtered: !!(type || head) };
 }
 
 function renderReportPreview() {
@@ -689,7 +730,7 @@ function buildTables(d, withLoc = true) {
       const E = d.base.filter(e => e.uid === u.id);
       const p = sums(d.rows.filter(e => e.uid === u.id));
       const bal = (+u.openingBalance || 0) + sums(E).net;
-      return [u.name, u.email, round2(p.inc), round2(p.exp), round2(p.net), round2(bal)];
+      return [u.name, u.email, curOf(u.id), round2(p.inc), round2(p.exp), round2(p.net), round2(bal)];
     });
   }
   return { entryHead, entryRows, headRows, dayRows, userRows };
@@ -704,14 +745,14 @@ $("#dl-xlsx").addEventListener("click", () => {
     ["Expense report"], ["Account", d.title], ["Period", rangeLabel(d.r)],
     ["Filter", [d.type && (d.type === "income" ? "Income only" : "Expense only"), d.head].filter(Boolean).join(" · ") || "None"],
     ["Generated", new Date().toLocaleString("en-GB") + " by " + S.user.email], [],
-    [`Opening balance (b/f) ${CURRENCY}`, round2(d.bf)], ["Income", round2(d.s.inc)], ["Expense", round2(d.s.exp)],
-    ["Net", round2(d.s.net)], [`Closing balance ${CURRENCY}`, round2(d.closing)], ["Entries", d.s.count]
+    ["Currency", d.cur === "MIXED" ? "Mixed — see By user sheet" : d.cur], [], [`Opening balance (b/f)`, round2(d.bf)], ["Income", round2(d.s.inc)], ["Expense", round2(d.s.exp)],
+    ["Net", round2(d.s.net)], [`Closing balance`, round2(d.closing)], ["Entries", d.s.count]
   ];
   XLSX.utils.book_append_sheet(wb, sheet(summary, [28, 40]), "Summary");
   XLSX.utils.book_append_sheet(wb, sheet([t.entryHead, ...t.entryRows, [], totalRow(t.entryHead, d)], t.entryHead.map(h => ({ Description: 34, Head: 22, User: 20, Location: 22, Map: 40 }[h] || 13))), "Entries");
   XLSX.utils.book_append_sheet(wb, sheet([["Type", "Head", "Total"], ...t.headRows], [12, 28, 14]), "By head");
   XLSX.utils.book_append_sheet(wb, sheet([["Date", "Income", "Expense", "Net"], ...t.dayRows], [13, 13, 13, 13]), "Daily");
-  if (t.userRows) XLSX.utils.book_append_sheet(wb, sheet([["User", "Email", "Income (period)", "Expense (period)", "Net (period)", "Current balance"], ...t.userRows], [22, 28, 16, 16, 14, 16]), "By user");
+  if (t.userRows) XLSX.utils.book_append_sheet(wb, sheet([["User", "Email", "Currency", "Income (period)", "Expense (period)", "Net (period)", "Current balance"], ...t.userRows], [22, 28, 10, 16, 16, 14, 16]), "By user");
   XLSX.writeFile(wb, fileBase(d) + ".xlsx");
 });
 function sheet(aoa, widths) { const ws = XLSX.utils.aoa_to_sheet(aoa); ws["!cols"] = widths.map(w => ({ wch: w })); return ws; }
@@ -735,6 +776,7 @@ let logoData = null;
 $("#dl-pdf").addEventListener("click", () => {
   if (!window.jspdf) { toast("PDF library not loaded — check internet"); return; }
   const d = reportData(), t = buildTables(d, false);
+  const money = (n, c = d.cur === "MIXED" ? "USD" : d.cur) => (Number(n) || 0).toLocaleString(curInfo(c).loc || "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const pdf = new window.jspdf.jsPDF({ orientation: t.entryHead.length > 9 ? "landscape" : "portrait", unit: "pt", format: "a4" });
   const W = pdf.internal.pageSize.getWidth(), orange = [232, 100, 30], dark = [43, 47, 51];
   pdf.setFillColor(...dark); pdf.rect(0, 0, W, 56, "F");
@@ -743,7 +785,7 @@ $("#dl-pdf").addEventListener("click", () => {
   pdf.setFontSize(15); pdf.text("Expense report", 66, 33);
   pdf.setFont("helvetica", "normal"); pdf.setFontSize(9); pdf.text(new Date().toLocaleString("en-GB"), W - 28, 33, { align: "right" });
   pdf.setTextColor(30); pdf.setFontSize(10);
-  pdf.text(`Account: ${d.title}`, 28, 78); pdf.text(`Period: ${rangeLabel(d.r)}`, 28, 93);
+  pdf.text(`Account: ${d.title}   ·   Currency: ${d.cur === "MIXED" ? "mixed (see per-user table)" : d.cur}`, 28, 78); pdf.text(`Period: ${rangeLabel(d.r)}`, 28, 93);
   if (d.filtered) pdf.text(`Filter: ${[d.type, d.head].filter(Boolean).join(" · ")}`, 28, 108);
   pdf.autoTable({
     startY: d.filtered ? 118 : 104, theme: "grid", styles: { fontSize: 9 }, headStyles: { fillColor: orange },
@@ -752,8 +794,8 @@ $("#dl-pdf").addEventListener("click", () => {
   });
   if (t.userRows) pdf.autoTable({
     startY: pdf.lastAutoTable.finalY + 14, theme: "striped", styles: { fontSize: 8.5 }, headStyles: { fillColor: dark },
-    head: [["User", "Income", "Expense", "Net", "Current balance"]],
-    body: t.userRows.map(r => [r[0], money(r[2]), money(r[3]), money(r[4]), money(r[5])])
+    head: [["User", "Currency", "Income", "Expense", "Net", "Current balance"]],
+    body: t.userRows.map(r => [r[0], r[2], money(r[3], r[2]), money(r[4], r[2]), money(r[5], r[2]), money(r[6], r[2])])
   });
   if (t.headRows.length) pdf.autoTable({
     startY: pdf.lastAutoTable.finalY + 14, theme: "striped", styles: { fontSize: 8.5 }, headStyles: { fillColor: dark },
@@ -783,7 +825,8 @@ const revive = o => Object.fromEntries(Object.entries(o || {}).map(([k, v]) => [
 async function exportAccount(uid, withReceipts) {
   const prof = (await getDoc(doc(db, "users", uid))).data() || {};
   const grab = async name => (await getDocs(collection(db, "users", uid, name))).docs.map(d => ({ id: d.id, ...plain(d.data()) }));
-  const acc = { uid, profile: plain(prof), heads: await grab("heads"), entries: await grab("entries") };
+  const settings = (await getDoc(doc(db, "users", uid, "settings", "main"))).data() || null;
+  const acc = { uid, profile: plain(prof), settings, heads: await grab("heads"), entries: await grab("entries") };
   if (withReceipts) acc.receipts = await grab("receipts");
   return acc;
 }
@@ -853,6 +896,7 @@ $("#bk-file").addEventListener("change", async e => {
         const { id, ...rest } = rec[r];
         await setDoc(doc(db, "users", uid, "receipts", id), revive(rest));
       }
+      if (acc.settings) await setDoc(doc(db, "users", uid, "settings", "main"), acc.settings, { merge: true });
       const p = acc.profile || {};
       if (isAdmin()) await updateDoc(doc(db, "users", uid), { openingBalance: +p.openingBalance || 0, ...(p.name ? { name: p.name } : {}) });
       else await updateDoc(doc(db, "users", uid), { openingBalance: +p.openingBalance || 0 });
@@ -899,10 +943,10 @@ async function readBill(rec) {
   const want = ["e-amount", "e-date", "e-head", "e-mode", "e-note", "e-ref"].filter(id => !S.touched.has(id));
   if (!want.length) return;
   const heads = S.heads.map(h => `${h.type}: ${h.name}`).join("\n");
-  const prompt = `You read UAE bills, receipts and invoices (English or Arabic) for an expense app. Today is ${todayStr()}.
+  const prompt = `You read bills, receipts and invoices (any language, e.g. English, Arabic, Hindi) for an expense app. The account currency is ${CUR}. Today is ${todayStr()}.
 Extract:
 - amount: the FINAL total actually paid, including VAT (not the subtotal, not VAT alone), as a number.
-- date: bill date as YYYY-MM-DD (UAE bills use day/month order).
+- date: bill date as YYYY-MM-DD (bills from UAE/India use day/month order).
 - vendor: shop or company name, short.
 - billNo: invoice / receipt / bill number if printed.
 - description: 3-8 words on what was bought, e.g. "Diesel 40L" or "Lunch for site team".

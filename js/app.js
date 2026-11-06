@@ -1240,9 +1240,12 @@ $("#bk-file").addEventListener("change", async e => {
         await setDoc(doc(db, "users", uid, "receipts", id), revive(rest));
       }
       if (acc.settings) await setDoc(doc(db, "users", uid, "settings", "main"), acc.settings, { merge: true });
-      const p = acc.profile || {};
-      if (isAdmin()) await updateDoc(doc(db, "users", uid), { openingBalance: +p.openingBalance || 0, ...(p.name ? { name: p.name } : {}) });
-      else await updateDoc(doc(db, "users", uid), { openingBalance: +p.openingBalance || 0 });
+      // An add-only import file (no profile) leaves the user's name and settings untouched
+      if (acc.profile) {
+        const p = acc.profile;
+        if (isAdmin()) await updateDoc(doc(db, "users", uid), { openingBalance: +p.openingBalance || 0, ...(p.name ? { name: p.name } : {}) });
+        else await updateDoc(doc(db, "users", uid), { openingBalance: +p.openingBalance || 0 });
+      }
     }
     toast(`Restore complete${skipped ? ` (${skipped} skipped)` : ""}`, 4000);
   } catch (err) { console.error(err); toast("Restore stopped: " + friendly(err), 6000); }
